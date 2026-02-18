@@ -1,0 +1,459 @@
+"""Database connection management, schema creation, and CRUD operations."""
+
+import sqlite3
+from datetime import date, datetime
+from pathlib import Path
+
+from argon2 import PasswordHasher
+
+from .models import Camera, CameraIssue, FilmStock, Frame, Lens, Roll, User
+
+DB_PATH = Path.home() / ".pjourney" / "pjourney.db"
+
+ph = PasswordHasher()
+
+
+def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
+    path = db_path or DB_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def init_db(conn: sqlite3.Connection) -> None:
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS cameras (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            name TEXT NOT NULL,
+            make TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            serial_number TEXT NOT NULL DEFAULT '',
+            year_built INTEGER,
+            year_purchased INTEGER,
+            purchased_from TEXT,
+            description TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS camera_issues (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            camera_id INTEGER NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
+            description TEXT NOT NULL,
+            date_noted DATE NOT NULL,
+            resolved BOOLEAN NOT NULL DEFAULT 0,
+            resolved_date DATE,
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS lenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            name TEXT NOT NULL,
+            make TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            focal_length TEXT NOT NULL DEFAULT '',
+            max_aperture REAL,
+            filter_diameter REAL,
+            year_built INTEGER,
+            year_purchased INTEGER,
+            purchase_location TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS film_stocks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            brand TEXT NOT NULL DEFAULT '',
+            name TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'color',
+            iso INTEGER NOT NULL DEFAULT 400,
+            format TEXT NOT NULL DEFAULT '35mm',
+            frames_per_roll INTEGER NOT NULL DEFAULT 36,
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS rolls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            film_stock_id INTEGER NOT NULL REFERENCES film_stocks(id),
+            camera_id INTEGER REFERENCES cameras(id),
+            status TEXT NOT NULL DEFAULT 'fresh',
+            loaded_date DATE,
+            finished_date DATE,
+            sent_for_dev_date DATE,
+            developed_date DATE,
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS frames (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            roll_id INTEGER NOT NULL REFERENCES rolls(id) ON DELETE CASCADE,
+            frame_number INTEGER NOT NULL,
+            subject TEXT NOT NULL DEFAULT '',
+            aperture TEXT NOT NULL DEFAULT '',
+            shutter_speed TEXT NOT NULL DEFAULT '',
+            lens_id INTEGER REFERENCES lenses(id),
+            date_taken DATE,
+            location TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT ''
+        );
+    """)
+    conn.commit()
+    _ensure_default_user(conn)
+
+
+def _ensure_default_user(conn: sqlite3.Connection) -> None:
+    row = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
+    if row is None:
+        hashed = ph.hash("pjourney")
+        conn.execute(
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            ("admin", hashed),
+        )
+        conn.commit()
+
+
+# --- User CRUD ---
+
+def get_users(conn: sqlite3.Connection) -> list[User]:
+    rows = conn.execute("SELECT * FROM users ORDER BY username").fetchall()
+    return [User(**dict(r)) for r in rows]
+
+
+def get_user(conn: sqlite3.Connection, user_id: int) -> User | None:
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return User(**dict(row)) if row else None
+
+
+def verify_password(conn: sqlite3.Connection, username: str, password: str) -> User | None:
+    row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    if row is None:
+        return None
+    user = User(**dict(row))
+    try:
+        ph.verify(user.password_hash, password)
+        if ph.check_needs_rehash(user.password_hash):
+            new_hash = ph.hash(password)
+            conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user.id))
+            conn.commit()
+        return user
+    except Exception:
+        return None
+
+
+def create_user(conn: sqlite3.Connection, username: str, password: str) -> User:
+    hashed = ph.hash(password)
+    cur = conn.execute(
+        "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+        (username, hashed),
+    )
+    conn.commit()
+    return get_user(conn, cur.lastrowid)
+
+
+def delete_user(conn: sqlite3.Connection, user_id: int) -> None:
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+
+
+# --- Camera CRUD ---
+
+def get_cameras(conn: sqlite3.Connection, user_id: int) -> list[Camera]:
+    rows = conn.execute(
+        "SELECT * FROM cameras WHERE user_id = ? ORDER BY name", (user_id,)
+    ).fetchall()
+    return [Camera(**dict(r)) for r in rows]
+
+
+def get_camera(conn: sqlite3.Connection, camera_id: int) -> Camera | None:
+    row = conn.execute("SELECT * FROM cameras WHERE id = ?", (camera_id,)).fetchone()
+    return Camera(**dict(row)) if row else None
+
+
+def save_camera(conn: sqlite3.Connection, camera: Camera) -> Camera:
+    now = datetime.now().isoformat()
+    if camera.id is None:
+        cur = conn.execute(
+            """INSERT INTO cameras (user_id, name, make, model, serial_number,
+               year_built, year_purchased, purchased_from, description, notes,
+               created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (camera.user_id, camera.name, camera.make, camera.model,
+             camera.serial_number, camera.year_built, camera.year_purchased,
+             camera.purchased_from, camera.description, camera.notes, now, now),
+        )
+        conn.commit()
+        return get_camera(conn, cur.lastrowid)
+    else:
+        conn.execute(
+            """UPDATE cameras SET name=?, make=?, model=?, serial_number=?,
+               year_built=?, year_purchased=?, purchased_from=?, description=?,
+               notes=?, updated_at=? WHERE id=?""",
+            (camera.name, camera.make, camera.model, camera.serial_number,
+             camera.year_built, camera.year_purchased, camera.purchased_from,
+             camera.description, camera.notes, now, camera.id),
+        )
+        conn.commit()
+        return get_camera(conn, camera.id)
+
+
+def delete_camera(conn: sqlite3.Connection, camera_id: int) -> None:
+    conn.execute("DELETE FROM cameras WHERE id = ?", (camera_id,))
+    conn.commit()
+
+
+# --- Camera Issues ---
+
+def get_camera_issues(conn: sqlite3.Connection, camera_id: int) -> list[CameraIssue]:
+    rows = conn.execute(
+        "SELECT * FROM camera_issues WHERE camera_id = ? ORDER BY date_noted DESC",
+        (camera_id,),
+    ).fetchall()
+    return [CameraIssue(**dict(r)) for r in rows]
+
+
+def save_camera_issue(conn: sqlite3.Connection, issue: CameraIssue) -> CameraIssue:
+    if issue.id is None:
+        cur = conn.execute(
+            """INSERT INTO camera_issues (camera_id, description, date_noted, resolved,
+               resolved_date, notes) VALUES (?, ?, ?, ?, ?, ?)""",
+            (issue.camera_id, issue.description, issue.date_noted,
+             issue.resolved, issue.resolved_date, issue.notes),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM camera_issues WHERE id = ?", (cur.lastrowid,)).fetchone()
+    else:
+        conn.execute(
+            """UPDATE camera_issues SET description=?, date_noted=?, resolved=?,
+               resolved_date=?, notes=? WHERE id=?""",
+            (issue.description, issue.date_noted, issue.resolved,
+             issue.resolved_date, issue.notes, issue.id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM camera_issues WHERE id = ?", (issue.id,)).fetchone()
+    return CameraIssue(**dict(row))
+
+
+def delete_camera_issue(conn: sqlite3.Connection, issue_id: int) -> None:
+    conn.execute("DELETE FROM camera_issues WHERE id = ?", (issue_id,))
+    conn.commit()
+
+
+# --- Lens CRUD ---
+
+def get_lenses(conn: sqlite3.Connection, user_id: int) -> list[Lens]:
+    rows = conn.execute(
+        "SELECT * FROM lenses WHERE user_id = ? ORDER BY name", (user_id,)
+    ).fetchall()
+    return [Lens(**dict(r)) for r in rows]
+
+
+def get_lens(conn: sqlite3.Connection, lens_id: int) -> Lens | None:
+    row = conn.execute("SELECT * FROM lenses WHERE id = ?", (lens_id,)).fetchone()
+    return Lens(**dict(row)) if row else None
+
+
+def save_lens(conn: sqlite3.Connection, lens: Lens) -> Lens:
+    now = datetime.now().isoformat()
+    if lens.id is None:
+        cur = conn.execute(
+            """INSERT INTO lenses (user_id, name, make, model, focal_length,
+               max_aperture, filter_diameter, year_built, year_purchased,
+               purchase_location, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (lens.user_id, lens.name, lens.make, lens.model, lens.focal_length,
+             lens.max_aperture, lens.filter_diameter, lens.year_built,
+             lens.year_purchased, lens.purchase_location, now, now),
+        )
+        conn.commit()
+        return get_lens(conn, cur.lastrowid)
+    else:
+        conn.execute(
+            """UPDATE lenses SET name=?, make=?, model=?, focal_length=?,
+               max_aperture=?, filter_diameter=?, year_built=?, year_purchased=?,
+               purchase_location=?, updated_at=? WHERE id=?""",
+            (lens.name, lens.make, lens.model, lens.focal_length,
+             lens.max_aperture, lens.filter_diameter, lens.year_built,
+             lens.year_purchased, lens.purchase_location, now, lens.id),
+        )
+        conn.commit()
+        return get_lens(conn, lens.id)
+
+
+def delete_lens(conn: sqlite3.Connection, lens_id: int) -> None:
+    conn.execute("DELETE FROM lenses WHERE id = ?", (lens_id,))
+    conn.commit()
+
+
+# --- Film Stock CRUD ---
+
+def get_film_stocks(conn: sqlite3.Connection, user_id: int) -> list[FilmStock]:
+    rows = conn.execute(
+        "SELECT * FROM film_stocks WHERE user_id = ? ORDER BY brand, name", (user_id,)
+    ).fetchall()
+    return [FilmStock(**dict(r)) for r in rows]
+
+
+def get_film_stock(conn: sqlite3.Connection, stock_id: int) -> FilmStock | None:
+    row = conn.execute("SELECT * FROM film_stocks WHERE id = ?", (stock_id,)).fetchone()
+    return FilmStock(**dict(row)) if row else None
+
+
+def save_film_stock(conn: sqlite3.Connection, stock: FilmStock) -> FilmStock:
+    now = datetime.now().isoformat()
+    if stock.id is None:
+        cur = conn.execute(
+            """INSERT INTO film_stocks (user_id, brand, name, type, iso, format,
+               frames_per_roll, notes, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (stock.user_id, stock.brand, stock.name, stock.type, stock.iso,
+             stock.format, stock.frames_per_roll, stock.notes, now),
+        )
+        conn.commit()
+        return get_film_stock(conn, cur.lastrowid)
+    else:
+        conn.execute(
+            """UPDATE film_stocks SET brand=?, name=?, type=?, iso=?, format=?,
+               frames_per_roll=?, notes=? WHERE id=?""",
+            (stock.brand, stock.name, stock.type, stock.iso, stock.format,
+             stock.frames_per_roll, stock.notes, stock.id),
+        )
+        conn.commit()
+        return get_film_stock(conn, stock.id)
+
+
+def delete_film_stock(conn: sqlite3.Connection, stock_id: int) -> None:
+    conn.execute("DELETE FROM film_stocks WHERE id = ?", (stock_id,))
+    conn.commit()
+
+
+# --- Roll CRUD ---
+
+def get_rolls(conn: sqlite3.Connection, user_id: int, status: str | None = None) -> list[Roll]:
+    if status:
+        rows = conn.execute(
+            "SELECT * FROM rolls WHERE user_id = ? AND status = ? ORDER BY created_at DESC",
+            (user_id, status),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM rolls WHERE user_id = ? ORDER BY created_at DESC", (user_id,)
+        ).fetchall()
+    return [Roll(**dict(r)) for r in rows]
+
+
+def get_roll(conn: sqlite3.Connection, roll_id: int) -> Roll | None:
+    row = conn.execute("SELECT * FROM rolls WHERE id = ?", (roll_id,)).fetchone()
+    return Roll(**dict(row)) if row else None
+
+
+def create_roll(conn: sqlite3.Connection, roll: Roll, frames_per_roll: int) -> Roll:
+    now = datetime.now().isoformat()
+    cur = conn.execute(
+        """INSERT INTO rolls (user_id, film_stock_id, camera_id, status,
+           loaded_date, finished_date, sent_for_dev_date, developed_date,
+           notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (roll.user_id, roll.film_stock_id, roll.camera_id, roll.status,
+         roll.loaded_date, roll.finished_date, roll.sent_for_dev_date,
+         roll.developed_date, roll.notes, now),
+    )
+    roll_id = cur.lastrowid
+    # Pre-populate frames
+    for i in range(1, frames_per_roll + 1):
+        conn.execute(
+            "INSERT INTO frames (roll_id, frame_number) VALUES (?, ?)",
+            (roll_id, i),
+        )
+    conn.commit()
+    return get_roll(conn, roll_id)
+
+
+def update_roll(conn: sqlite3.Connection, roll: Roll) -> Roll:
+    conn.execute(
+        """UPDATE rolls SET film_stock_id=?, camera_id=?, status=?,
+           loaded_date=?, finished_date=?, sent_for_dev_date=?,
+           developed_date=?, notes=? WHERE id=?""",
+        (roll.film_stock_id, roll.camera_id, roll.status,
+         roll.loaded_date, roll.finished_date, roll.sent_for_dev_date,
+         roll.developed_date, roll.notes, roll.id),
+    )
+    conn.commit()
+    return get_roll(conn, roll.id)
+
+
+def delete_roll(conn: sqlite3.Connection, roll_id: int) -> None:
+    conn.execute("DELETE FROM frames WHERE roll_id = ?", (roll_id,))
+    conn.execute("DELETE FROM rolls WHERE id = ?", (roll_id,))
+    conn.commit()
+
+
+# --- Frame CRUD ---
+
+def get_frames(conn: sqlite3.Connection, roll_id: int) -> list[Frame]:
+    rows = conn.execute(
+        "SELECT * FROM frames WHERE roll_id = ? ORDER BY frame_number", (roll_id,)
+    ).fetchall()
+    return [Frame(**dict(r)) for r in rows]
+
+
+def get_frame(conn: sqlite3.Connection, frame_id: int) -> Frame | None:
+    row = conn.execute("SELECT * FROM frames WHERE id = ?", (frame_id,)).fetchone()
+    return Frame(**dict(row)) if row else None
+
+
+def update_frame(conn: sqlite3.Connection, frame: Frame) -> Frame:
+    conn.execute(
+        """UPDATE frames SET subject=?, aperture=?, shutter_speed=?,
+           lens_id=?, date_taken=?, location=?, notes=? WHERE id=?""",
+        (frame.subject, frame.aperture, frame.shutter_speed,
+         frame.lens_id, frame.date_taken, frame.location, frame.notes,
+         frame.id),
+    )
+    conn.commit()
+    return get_frame(conn, frame.id)
+
+
+# --- Utility ---
+
+def vacuum_db(conn: sqlite3.Connection) -> None:
+    conn.execute("VACUUM")
+
+
+def get_counts(conn: sqlite3.Connection, user_id: int) -> dict[str, int]:
+    counts = {}
+    for table in ("cameras", "lenses", "film_stocks", "rolls"):
+        row = conn.execute(
+            f"SELECT COUNT(*) as cnt FROM {table} WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        counts[table] = row["cnt"]
+    return counts
+
+
+def get_loaded_cameras(conn: sqlite3.Connection, user_id: int) -> list[dict]:
+    rows = conn.execute(
+        """SELECT c.name as camera_name, c.id as camera_id,
+                  fs.brand || ' ' || fs.name as film_name, r.status
+           FROM rolls r
+           JOIN cameras c ON r.camera_id = c.id
+           JOIN film_stocks fs ON r.film_stock_id = fs.id
+           WHERE r.user_id = ? AND r.status IN ('loaded', 'shooting')
+           ORDER BY c.name""",
+        (user_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
