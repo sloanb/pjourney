@@ -153,4 +153,5 @@ class DashboardScreen(Screen):
         self.app.push_screen("admin")
 
     def action_quit(self) -> None:
-        self.app.exit()
+        from pjourney.screens.splash import SplashScreen
+        self.app.push_screen(SplashScreen(goodbye=True))

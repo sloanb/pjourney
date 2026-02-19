@@ -12,6 +12,7 @@ from pjourney.screens.frames import FramesScreen
 from pjourney.screens.lenses import LensesScreen
 from pjourney.screens.login import LoginScreen
 from pjourney.screens.rolls import RollsScreen
+from pjourney.screens.splash import SplashScreen
 
 
 class PJourneyApp(App):
@@ -42,4 +43,4 @@ class PJourneyApp(App):
         db.init_db(self.db_conn)
 
     def on_mount(self) -> None:
-        self.push_screen("login")
+        self.push_screen(SplashScreen())
