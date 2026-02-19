@@ -9,6 +9,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Footer, Input, Label, Select, Static, TextArea
 
 from pjourney.widgets.app_header import AppHeader
+from pjourney.widgets.confirm_modal import ConfirmModal
 
 from pjourney.db import database as db
 from pjourney.db.models import Camera, CameraIssue
@@ -282,8 +283,11 @@ class CamerasScreen(Screen):
         cam_id = self._get_selected_id()
         if cam_id is None:
             return
-        db.delete_camera(self.app.db_conn, cam_id)
-        self._refresh()
+        def on_confirmed(confirmed: bool) -> None:
+            if confirmed:
+                db.delete_camera(self.app.db_conn, cam_id)
+                self._refresh()
+        self.app.push_screen(ConfirmModal("Delete this camera? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#detail-btn")
     def action_detail(self) -> None:
@@ -424,8 +428,11 @@ class CameraDetailScreen(Screen):
         issue_id = self._get_selected_issue_id()
         if issue_id is None:
             return
-        db.delete_camera_issue(self.app.db_conn, issue_id)
-        self._refresh()
+        def on_confirmed(confirmed: bool) -> None:
+            if confirmed:
+                db.delete_camera_issue(self.app.db_conn, issue_id)
+                self._refresh()
+        self.app.push_screen(ConfirmModal("Delete this issue? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#back-btn")
     def action_go_back(self) -> None:

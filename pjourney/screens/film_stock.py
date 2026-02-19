@@ -7,6 +7,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Footer, Input, Label, Select, Static
 
 from pjourney.widgets.app_header import AppHeader
+from pjourney.widgets.confirm_modal import ConfirmModal
 
 from pjourney.db import database as db
 from pjourney.db.models import FilmStock
@@ -187,8 +188,11 @@ class FilmStockScreen(Screen):
         stock_id = self._get_selected_id()
         if stock_id is None:
             return
-        db.delete_film_stock(self.app.db_conn, stock_id)
-        self._refresh()
+        def on_confirmed(confirmed: bool) -> None:
+            if confirmed:
+                db.delete_film_stock(self.app.db_conn, stock_id)
+                self._refresh()
+        self.app.push_screen(ConfirmModal("Delete this film stock? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#back-btn")
     def action_go_back(self) -> None:

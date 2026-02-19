@@ -7,6 +7,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Footer, Input, Label, Static, TextArea
 
 from pjourney.widgets.app_header import AppHeader
+from pjourney.widgets.confirm_modal import ConfirmModal
 
 from pjourney.db import database as db
 from pjourney.db.models import Lens, LensNote
@@ -235,8 +236,11 @@ class LensesScreen(Screen):
         lens_id = self._get_selected_id()
         if lens_id is None:
             return
-        db.delete_lens(self.app.db_conn, lens_id)
-        self._refresh()
+        def on_confirmed(confirmed: bool) -> None:
+            if confirmed:
+                db.delete_lens(self.app.db_conn, lens_id)
+                self._refresh()
+        self.app.push_screen(ConfirmModal("Delete this lens? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#notes-btn")
     def action_notes(self) -> None:
@@ -385,8 +389,11 @@ class LensDetailScreen(Screen):
         note_id = self._get_selected_note_id()
         if note_id is None:
             return
-        db.delete_lens_note(self.app.db_conn, note_id)
-        self._refresh()
+        def on_confirmed(confirmed: bool) -> None:
+            if confirmed:
+                db.delete_lens_note(self.app.db_conn, note_id)
+                self._refresh()
+        self.app.push_screen(ConfirmModal("Delete this note? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#back-btn")
     def action_go_back(self) -> None:
