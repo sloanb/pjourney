@@ -508,6 +508,48 @@ def get_counts(conn: sqlite3.Connection, user_id: int) -> dict[str, int]:
     return counts
 
 
+def get_usage_stats(conn: sqlite3.Connection, user_id: int) -> dict[str, str | None]:
+    """Return most-used film stock, camera, and lens by roll/frame count."""
+    row = conn.execute(
+        """SELECT fs.brand || ' ' || fs.name as name
+           FROM rolls r
+           JOIN film_stocks fs ON r.film_stock_id = fs.id
+           WHERE r.user_id = ?
+           GROUP BY r.film_stock_id
+           ORDER BY COUNT(*) DESC
+           LIMIT 1""",
+        (user_id,),
+    ).fetchone()
+    most_film = row["name"] if row else None
+
+    row = conn.execute(
+        """SELECT c.name
+           FROM rolls r
+           JOIN cameras c ON r.camera_id = c.id
+           WHERE r.user_id = ? AND r.camera_id IS NOT NULL
+           GROUP BY r.camera_id
+           ORDER BY COUNT(*) DESC
+           LIMIT 1""",
+        (user_id,),
+    ).fetchone()
+    most_camera = row["name"] if row else None
+
+    row = conn.execute(
+        """SELECT l.name
+           FROM frames f
+           JOIN lenses l ON f.lens_id = l.id
+           JOIN rolls r ON f.roll_id = r.id
+           WHERE r.user_id = ? AND f.lens_id IS NOT NULL
+           GROUP BY f.lens_id
+           ORDER BY COUNT(*) DESC
+           LIMIT 1""",
+        (user_id,),
+    ).fetchone()
+    most_lens = row["name"] if row else None
+
+    return {"film_stock": most_film, "camera": most_camera, "lens": most_lens}
+
+
 def get_loaded_cameras(conn: sqlite3.Connection, user_id: int) -> list[dict]:
     rows = conn.execute(
         """SELECT c.name as camera_name, c.id as camera_id,

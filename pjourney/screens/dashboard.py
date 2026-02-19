@@ -45,6 +45,27 @@ class DashboardScreen(Screen):
         text-align: center;
         color: $text-muted;
     }
+    #favorites-row {
+        height: auto;
+        padding: 0 2 1 2;
+    }
+    .fav-box {
+        width: 1fr;
+        height: auto;
+        border: solid $success;
+        padding: 1 2;
+        margin: 0 1;
+        text-align: center;
+    }
+    .fav-value {
+        text-style: bold;
+        text-align: center;
+        color: $success;
+    }
+    .fav-label {
+        text-align: center;
+        color: $text-muted;
+    }
     #loaded-section {
         height: auto;
         padding: 1 2;
@@ -78,6 +99,16 @@ class DashboardScreen(Screen):
             with Vertical(classes="stat-box"):
                 yield Label("0", id="roll-count", classes="stat-value")
                 yield Label("Rolls", classes="stat-label")
+        with Horizontal(id="favorites-row"):
+            with Vertical(classes="fav-box"):
+                yield Label("—", id="fav-camera", classes="fav-value")
+                yield Label("Most Used Camera", classes="fav-label")
+            with Vertical(classes="fav-box"):
+                yield Label("—", id="fav-lens", classes="fav-value")
+                yield Label("Most Used Lens", classes="fav-label")
+            with Vertical(classes="fav-box"):
+                yield Label("—", id="fav-film", classes="fav-value")
+                yield Label("Most Used Film", classes="fav-label")
         with Vertical(id="loaded-section"):
             yield Static("Currently Loaded Cameras", markup=False)
             yield Vertical(id="loaded-list")
@@ -103,6 +134,11 @@ class DashboardScreen(Screen):
         self.query_one("#lens-count", Label).update(str(counts["lenses"]))
         self.query_one("#stock-count", Label).update(str(counts["film_stocks"]))
         self.query_one("#roll-count", Label).update(str(counts["rolls"]))
+
+        stats = db.get_usage_stats(conn, user_id)
+        self.query_one("#fav-camera", Label).update(stats["camera"] or "—")
+        self.query_one("#fav-lens", Label).update(stats["lens"] or "—")
+        self.query_one("#fav-film", Label).update(stats["film_stock"] or "—")
 
         loaded = db.get_loaded_cameras(conn, user_id)
         loaded_list = self.query_one("#loaded-list", Vertical)
