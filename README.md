@@ -1,0 +1,80 @@
+# pjourney
+
+A terminal TUI application for managing camera collections, lenses, and film inventory.
+
+Tracks your gear and follows film rolls through their full lifecycle — from loading the camera to getting negatives back from the lab. Works for film and digital shooters.
+
+---
+
+## Requirements
+
+- Python 3.12+
+- Dependencies listed in `pyproject.toml` (Textual, argon2-cffi)
+
+## Setup
+
+```bash
+pip install -e ".[dev]"
+```
+
+## Running
+
+```bash
+python main.py
+```
+
+Default login: `admin` / `pjourney`
+
+Database is stored at `~/.pjourney/pjourney.db` and created automatically on first run.
+
+## Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+---
+
+## Project Structure
+
+```
+pjourney/
+  app.py                  — App entry point, screen registry, DB connection
+  db/
+    database.py           — Schema, migrations, all CRUD functions
+    models.py             — Dataclasses (Camera, Lens, FilmStock, Roll, Frame, …)
+  screens/
+    login.py              — Login / account creation
+    dashboard.py          — Home screen with inventory stats and loaded cameras
+    cameras.py            — Camera list, edit form, issue/maintenance log
+    lenses.py             — Lens list, edit form, per-lens notes
+    film_stock.py         — Film stock catalogue
+    rolls.py              — Roll lifecycle management and frame access
+    frames.py             — Per-frame shooting details
+    admin.py              — DB backup/vacuum and user management
+  widgets/
+    inventory_table.py    — Shared DataTable with vim-style navigation
+    app_header.py         — Common screen header
+    confirm_modal.py      — Reusable delete confirmation modal
+tests/
+  test_database.py        — CRUD and schema tests (38 tests)
+  test_models.py          — Dataclass default/value tests
+  test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests
+  test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests
+```
+
+## Roll Lifecycle
+
+```
+Fresh → Loaded → Shooting → Finished → Developing → Developed
+```
+
+Each transition records a date automatically. Frames are pre-created when a roll is started, based on the frames-per-roll setting of the selected film stock.
+
+## Architecture Notes
+
+- **Textual 8** for the TUI — screens are pushed/popped on a stack
+- **SQLite** via `sqlite3` with `row_factory = sqlite3.Row` — no ORM
+- Schema migrations handled in `_migrate_db()` using `ALTER TABLE … ADD COLUMN` with exception swallowing
+- Passwords hashed with **argon2-cffi**; rehash-on-verify is supported
+- Screen-to-screen data passing uses app-level instance variables (`_camera_detail_id`, `_lens_detail_id`, `_frames_roll_id`)
