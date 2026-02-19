@@ -25,6 +25,8 @@ class Camera:
     purchased_from: str | None = None
     description: str = ""
     notes: str = ""
+    camera_type: str = "film"          # "film" or "digital"
+    sensor_size: str | None = None     # Only for digital cameras
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

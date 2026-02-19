@@ -6,13 +6,27 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Input, Label, Static, TextArea
+from textual.widgets import Button, Footer, Input, Label, Select, Static, TextArea
 
 from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
 from pjourney.db.models import Camera, CameraIssue
 from pjourney.widgets.inventory_table import InventoryTable
+
+CAMERA_TYPES = [("Film", "film"), ("Digital", "digital")]
+
+SENSOR_SIZES = [
+    ("Full Frame (35mm)", "full_frame"),
+    ("APS-C", "aps_c"),
+    ("APS-H", "aps_h"),
+    ("Micro Four Thirds", "mft"),
+    ("1-inch", "1_inch"),
+    ("Medium Format", "medium_format"),
+    ("Large Format", "large_format"),
+]
+
+_SENSOR_LABEL = {v: k for k, v in SENSOR_SIZES}
 
 
 class CameraFormModal(ModalScreen[Camera | None]):
@@ -33,6 +47,13 @@ class CameraFormModal(ModalScreen[Camera | None]):
     }
     #form-box Input {
         margin: 0 0 0 0;
+    }
+    #form-box Select {
+        margin: 0 0 0 0;
+    }
+    #sensor-size-container {
+        display: none;
+        height: auto;
     }
     .form-buttons {
         height: auto;
@@ -69,9 +90,24 @@ class CameraFormModal(ModalScreen[Camera | None]):
             yield Input(value=c.description, id="description")
             yield Label("Notes")
             yield Input(value=c.notes, id="notes")
+            yield Label("Camera Type")
+            yield Select(CAMERA_TYPES, value=c.camera_type or "film", id="camera_type")
+            with Vertical(id="sensor-size-container"):
+                yield Label("Sensor Size")
+                yield Select(SENSOR_SIZES, value=c.sensor_size or Select.BLANK,
+                             allow_blank=True, id="sensor_size")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
+
+    def on_mount(self) -> None:
+        container = self.query_one("#sensor-size-container")
+        container.display = (self.camera.camera_type == "digital")
+
+    @on(Select.Changed, "#camera_type")
+    def on_camera_type_changed(self, event: Select.Changed) -> None:
+        container = self.query_one("#sensor-size-container")
+        container.display = (event.value == "digital")
 
     @on(Button.Pressed, "#save-btn")
     def save(self) -> None:
@@ -87,6 +123,9 @@ class CameraFormModal(ModalScreen[Camera | None]):
         c.purchased_from = self.query_one("#purchased_from", Input).value.strip() or None
         c.description = self.query_one("#description", Input).value.strip()
         c.notes = self.query_one("#notes", Input).value.strip()
+        c.camera_type = self.query_one("#camera_type", Select).value or "film"
+        sensor_val = self.query_one("#sensor_size", Select).value
+        c.sensor_size = sensor_val if sensor_val is not Select.BLANK else None
         if not c.name:
             return
         c.user_id = self.app.current_user.id
@@ -332,6 +371,12 @@ class CameraDetailScreen(Screen):
             info.mount(Static(f"Description: {camera.description}", markup=False))
         if camera.notes:
             info.mount(Static(f"Notes: {camera.notes}", markup=False))
+        type_label = "Digital" if camera.camera_type == "digital" else "Film"
+        if camera.camera_type == "digital" and camera.sensor_size:
+            sensor_label = _SENSOR_LABEL.get(camera.sensor_size, camera.sensor_size)
+            info.mount(Static(f"Type: {type_label}  Sensor: {sensor_label}", markup=False))
+        else:
+            info.mount(Static(f"Type: {type_label}", markup=False))
 
         table = self.query_one("#issue-table", InventoryTable)
         table.clear()

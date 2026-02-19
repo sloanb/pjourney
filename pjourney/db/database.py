@@ -43,6 +43,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             purchased_from TEXT,
             description TEXT NOT NULL DEFAULT '',
             notes TEXT NOT NULL DEFAULT '',
+            camera_type TEXT NOT NULL DEFAULT 'film',
+            sensor_size TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -135,6 +137,16 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    for col, definition in [
+        ("camera_type", "TEXT NOT NULL DEFAULT 'film'"),
+        ("sensor_size", "TEXT"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE cameras ADD COLUMN {col} {definition}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
 
 def _ensure_default_user(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
@@ -210,11 +222,12 @@ def save_camera(conn: sqlite3.Connection, camera: Camera) -> Camera:
         cur = conn.execute(
             """INSERT INTO cameras (user_id, name, make, model, serial_number,
                year_built, year_purchased, purchased_from, description, notes,
-               created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               camera_type, sensor_size, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (camera.user_id, camera.name, camera.make, camera.model,
              camera.serial_number, camera.year_built, camera.year_purchased,
-             camera.purchased_from, camera.description, camera.notes, now, now),
+             camera.purchased_from, camera.description, camera.notes,
+             camera.camera_type, camera.sensor_size, now, now),
         )
         conn.commit()
         return get_camera(conn, cur.lastrowid)
@@ -222,10 +235,11 @@ def save_camera(conn: sqlite3.Connection, camera: Camera) -> Camera:
         conn.execute(
             """UPDATE cameras SET name=?, make=?, model=?, serial_number=?,
                year_built=?, year_purchased=?, purchased_from=?, description=?,
-               notes=?, updated_at=? WHERE id=?""",
+               notes=?, camera_type=?, sensor_size=?, updated_at=? WHERE id=?""",
             (camera.name, camera.make, camera.model, camera.serial_number,
              camera.year_built, camera.year_purchased, camera.purchased_from,
-             camera.description, camera.notes, now, camera.id),
+             camera.description, camera.notes, camera.camera_type,
+             camera.sensor_size, now, camera.id),
         )
         conn.commit()
         return get_camera(conn, camera.id)
