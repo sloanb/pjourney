@@ -36,12 +36,21 @@ class CameraFormModal(ModalScreen[Camera | None]):
         align: center middle;
     }
     #form-box {
-        width: 70;
+        width: 130;
+        max-width: 95%;
         height: auto;
         max-height: 90%;
         border: heavy $accent;
         padding: 1 2;
         background: $surface;
+    }
+    #form-columns {
+        height: auto;
+    }
+    #col-left, #col-right {
+        width: 1fr;
+        height: auto;
+        padding: 0 1;
     }
     #form-box Label {
         margin: 1 0 0 0;
@@ -73,30 +82,33 @@ class CameraFormModal(ModalScreen[Camera | None]):
         c = self.camera
         with Vertical(id="form-box"):
             yield Static("Edit Camera" if c.id else "Add Camera", markup=False)
-            yield Label("Name")
-            yield Input(value=c.name, id="name")
-            yield Label("Make")
-            yield Input(value=c.make, id="make")
-            yield Label("Model")
-            yield Input(value=c.model, id="model")
-            yield Label("Serial Number")
-            yield Input(value=c.serial_number, id="serial")
-            yield Label("Year Built")
-            yield Input(value=str(c.year_built or ""), id="year_built")
-            yield Label("Year Purchased")
-            yield Input(value=str(c.year_purchased or ""), id="year_purchased")
-            yield Label("Purchased From")
-            yield Input(value=c.purchased_from or "", id="purchased_from")
-            yield Label("Description")
-            yield Input(value=c.description, id="description")
-            yield Label("Notes")
-            yield Input(value=c.notes, id="notes")
-            yield Label("Camera Type")
-            yield Select(CAMERA_TYPES, value=c.camera_type or "film", id="camera_type")
-            with Vertical(id="sensor-size-container"):
-                yield Label("Sensor Size")
-                yield Select(SENSOR_SIZES, value=c.sensor_size if c.sensor_size else Select.NULL,
-                             allow_blank=True, id="sensor_size")
+            with Horizontal(id="form-columns"):
+                with Vertical(id="col-left"):
+                    yield Label("Name")
+                    yield Input(value=c.name, id="name")
+                    yield Label("Make")
+                    yield Input(value=c.make, id="make")
+                    yield Label("Model")
+                    yield Input(value=c.model, id="model")
+                    yield Label("Serial Number")
+                    yield Input(value=c.serial_number, id="serial")
+                    yield Label("Year Built")
+                    yield Input(value=str(c.year_built or ""), id="year_built")
+                    yield Label("Year Purchased")
+                    yield Input(value=str(c.year_purchased or ""), id="year_purchased")
+                with Vertical(id="col-right"):
+                    yield Label("Purchased From")
+                    yield Input(value=c.purchased_from or "", id="purchased_from")
+                    yield Label("Description")
+                    yield Input(value=c.description, id="description")
+                    yield Label("Notes")
+                    yield Input(value=c.notes, id="notes")
+                    yield Label("Camera Type")
+                    yield Select(CAMERA_TYPES, value=c.camera_type or "film", id="camera_type")
+                    with Vertical(id="sensor-size-container"):
+                        yield Label("Sensor Size")
+                        yield Select(SENSOR_SIZES, value=c.sensor_size if c.sensor_size else Select.NULL,
+                                     allow_blank=True, id="sensor_size")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -234,7 +246,7 @@ class CamerasScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#camera-table", InventoryTable)
-        table.add_columns("ID", "Name", "Make", "Model", "Serial #", "Year")
+        table.add_columns("ID", "Name", "Make", "Model", "Serial #", "Year", "Type", "Sensor")
         self._refresh()
 
     def on_screen_resume(self) -> None:
@@ -245,9 +257,16 @@ class CamerasScreen(Screen):
         table.clear()
         cameras = db.get_cameras(self.app.db_conn, self.app.current_user.id)
         for c in cameras:
+            if c.camera_type == "digital":
+                type_label = "Digital"
+                sensor_label = _SENSOR_LABEL.get(c.sensor_size, c.sensor_size) if c.sensor_size else "N/A"
+            else:
+                type_label = "Film"
+                sensor_label = "N/A"
             table.add_row(
                 str(c.id), c.name, c.make, c.model,
                 c.serial_number, str(c.year_built or ""),
+                type_label, sensor_label,
                 key=str(c.id),
             )
 
