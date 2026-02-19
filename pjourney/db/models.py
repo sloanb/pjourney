@@ -58,6 +58,15 @@ class Lens:
 
 
 @dataclass
+class LensNote:
+    id: int | None = None
+    lens_id: int = 0
+    content: str = ""
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass
 class FilmStock:
     id: int | None = None
     user_id: int = 0

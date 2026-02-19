@@ -6,7 +6,7 @@ from pathlib import Path
 
 from argon2 import PasswordHasher
 
-from .models import Camera, CameraIssue, FilmStock, Frame, Lens, Roll, User
+from .models import Camera, CameraIssue, FilmStock, Frame, Lens, LensNote, Roll, User
 
 DB_PATH = Path.home() / ".pjourney" / "pjourney.db"
 
@@ -69,6 +69,14 @@ def init_db(conn: sqlite3.Connection) -> None:
             year_built INTEGER,
             year_purchased INTEGER,
             purchase_location TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS lens_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lens_id INTEGER NOT NULL REFERENCES lenses(id) ON DELETE CASCADE,
+            content TEXT NOT NULL DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -308,6 +316,44 @@ def save_lens(conn: sqlite3.Connection, lens: Lens) -> Lens:
 
 def delete_lens(conn: sqlite3.Connection, lens_id: int) -> None:
     conn.execute("DELETE FROM lenses WHERE id = ?", (lens_id,))
+    conn.commit()
+
+
+# --- Lens Notes ---
+
+def get_lens_notes(conn: sqlite3.Connection, lens_id: int) -> list[LensNote]:
+    rows = conn.execute(
+        "SELECT * FROM lens_notes WHERE lens_id = ? ORDER BY created_at DESC",
+        (lens_id,),
+    ).fetchall()
+    return [LensNote(**dict(r)) for r in rows]
+
+
+def get_lens_note(conn: sqlite3.Connection, note_id: int) -> LensNote | None:
+    row = conn.execute("SELECT * FROM lens_notes WHERE id = ?", (note_id,)).fetchone()
+    return LensNote(**dict(row)) if row else None
+
+
+def save_lens_note(conn: sqlite3.Connection, note: LensNote) -> LensNote:
+    now = datetime.now().isoformat()
+    if note.id is None:
+        cur = conn.execute(
+            "INSERT INTO lens_notes (lens_id, content, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (note.lens_id, note.content, now, now),
+        )
+        conn.commit()
+        return get_lens_note(conn, cur.lastrowid)
+    else:
+        conn.execute(
+            "UPDATE lens_notes SET content=?, updated_at=? WHERE id=?",
+            (note.content, now, note.id),
+        )
+        conn.commit()
+        return get_lens_note(conn, note.id)
+
+
+def delete_lens_note(conn: sqlite3.Connection, note_id: int) -> None:
+    conn.execute("DELETE FROM lens_notes WHERE id = ?", (note_id,))
     conn.commit()
 
 

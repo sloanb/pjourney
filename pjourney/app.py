@@ -9,7 +9,7 @@ from pjourney.screens.cameras import CameraDetailScreen, CamerasScreen
 from pjourney.screens.dashboard import DashboardScreen
 from pjourney.screens.film_stock import FilmStockScreen
 from pjourney.screens.frames import FramesScreen
-from pjourney.screens.lenses import LensesScreen
+from pjourney.screens.lenses import LensDetailScreen, LensesScreen
 from pjourney.screens.login import LoginScreen
 from pjourney.screens.rolls import RollsScreen
 from pjourney.screens.splash import SplashScreen
@@ -29,6 +29,7 @@ class PJourneyApp(App):
         "cameras": CamerasScreen,
         "camera_detail": CameraDetailScreen,
         "lenses": LensesScreen,
+        "lens_detail": LensDetailScreen,
         "film_stock": FilmStockScreen,
         "rolls": RollsScreen,
         "frames": FramesScreen,
