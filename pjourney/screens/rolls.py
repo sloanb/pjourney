@@ -61,7 +61,7 @@ class CreateRollModal(ModalScreen[tuple[int, str] | None]):
     def save(self) -> None:
         try:
             stock_id = self.query_one("#stock-select", Select).value
-            if stock_id is Select.BLANK:
+            if stock_id is Select.NULL:
                 return
         except Exception:
             return
@@ -121,7 +121,7 @@ class LoadRollModal(ModalScreen[tuple[int, int | None] | None]):
     def save(self) -> None:
         try:
             camera_id = self.query_one("#camera-select", Select).value
-            if camera_id is Select.BLANK:
+            if camera_id is Select.NULL:
                 return
         except Exception:
             return

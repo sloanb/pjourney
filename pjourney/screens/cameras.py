@@ -95,7 +95,7 @@ class CameraFormModal(ModalScreen[Camera | None]):
             yield Select(CAMERA_TYPES, value=c.camera_type or "film", id="camera_type")
             with Vertical(id="sensor-size-container"):
                 yield Label("Sensor Size")
-                yield Select(SENSOR_SIZES, value=c.sensor_size or Select.BLANK,
+                yield Select(SENSOR_SIZES, value=c.sensor_size if c.sensor_size else Select.NULL,
                              allow_blank=True, id="sensor_size")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
@@ -126,7 +126,7 @@ class CameraFormModal(ModalScreen[Camera | None]):
         c.notes = self.query_one("#notes", Input).value.strip()
         c.camera_type = self.query_one("#camera_type", Select).value or "film"
         sensor_val = self.query_one("#sensor_size", Select).value
-        c.sensor_size = sensor_val if sensor_val is not Select.BLANK else None
+        c.sensor_size = sensor_val if sensor_val is not Select.NULL else None
         if not c.name:
             return
         c.user_id = self.app.current_user.id
