@@ -6,7 +6,9 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Select, Static
+from textual.widgets import Button, Footer, Input, Label, Select, Static
+
+from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
 from pjourney.db.models import ROLL_STATUSES, Roll
@@ -158,7 +160,7 @@ class RollsScreen(Screen):
         self._filter_status: str | None = None
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield AppHeader()
         with Horizontal(id="filter-row"):
             yield Button("All", id="filter-all", variant="primary")
             for status in ROLL_STATUSES:

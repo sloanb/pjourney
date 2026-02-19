@@ -4,7 +4,9 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Label, Static
+from textual.widgets import Button, Footer, Label, Static
+
+from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
 
@@ -62,7 +64,7 @@ class DashboardScreen(Screen):
     """
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield AppHeader()
         with Horizontal(id="stats-row"):
             with Vertical(classes="stat-box"):
                 yield Label("0", id="camera-count", classes="stat-value")

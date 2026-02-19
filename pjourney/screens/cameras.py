@@ -6,7 +6,9 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Static, TextArea
+from textual.widgets import Button, Footer, Input, Label, Static, TextArea
+
+from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
 from pjourney.db.models import Camera, CameraIssue
@@ -180,7 +182,7 @@ class CamerasScreen(Screen):
     """
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield AppHeader()
         yield InventoryTable(id="camera-table")
         with Horizontal(id="camera-actions"):
             yield Button("Add [a]", id="add-btn")
@@ -288,7 +290,7 @@ class CameraDetailScreen(Screen):
     """
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield AppHeader()
         yield Vertical(id="camera-info")
         with Vertical(id="issue-section"):
             yield Static("Issues", markup=False)

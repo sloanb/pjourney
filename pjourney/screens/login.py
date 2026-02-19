@@ -4,7 +4,9 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Center, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Header, Input, Label, Select, Static
+from textual.widgets import Button, Input, Label, Select, Static
+
+from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
 
@@ -45,7 +47,7 @@ class LoginScreen(Screen):
         self._create_mode = False
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield AppHeader()
         with Center():
             with Vertical(id="login-box"):
                 yield Static("pjourney", id="title", markup=False)

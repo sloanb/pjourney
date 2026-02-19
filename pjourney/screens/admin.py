@@ -8,7 +8,9 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Static
+from textual.widgets import Button, Footer, Input, Label, Static
+
+from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
 from pjourney.widgets.inventory_table import InventoryTable
@@ -107,7 +109,7 @@ class AdminScreen(Screen):
     """
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield AppHeader()
         with Vertical(id="admin-sections"):
             with Vertical(id="db-section"):
                 yield Static("Database Maintenance", markup=False)

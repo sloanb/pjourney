@@ -4,7 +4,9 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Select, Static
+from textual.widgets import Button, Footer, Input, Label, Select, Static
+
+from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
 from pjourney.db.models import FilmStock
@@ -124,7 +126,7 @@ class FilmStockScreen(Screen):
     """
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield AppHeader()
         yield InventoryTable(id="stock-table")
         with Horizontal(id="stock-actions"):
             yield Button("Add [a]", id="add-btn")

@@ -4,7 +4,9 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Static
+from textual.widgets import Button, Footer, Input, Label, Static
+
+from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
 from pjourney.db.models import Lens
@@ -115,7 +117,7 @@ class LensesScreen(Screen):
     """
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield AppHeader()
         yield InventoryTable(id="lens-table")
         with Horizontal(id="lens-actions"):
             yield Button("Add [a]", id="add-btn")
