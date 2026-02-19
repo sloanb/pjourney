@@ -91,6 +91,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             user_id INTEGER NOT NULL REFERENCES users(id),
             film_stock_id INTEGER NOT NULL REFERENCES film_stocks(id),
             camera_id INTEGER REFERENCES cameras(id),
+            lens_id INTEGER REFERENCES lenses(id),
             status TEXT NOT NULL DEFAULT 'fresh',
             loaded_date DATE,
             finished_date DATE,
@@ -114,7 +115,17 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
     """)
     conn.commit()
+    _migrate_db(conn)
     _ensure_default_user(conn)
+
+
+def _migrate_db(conn: sqlite3.Connection) -> None:
+    """Apply schema migrations for existing databases."""
+    try:
+        conn.execute("ALTER TABLE rolls ADD COLUMN lens_id INTEGER REFERENCES lenses(id)")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
 
 
 def _ensure_default_user(conn: sqlite3.Connection) -> None:
@@ -365,20 +376,20 @@ def get_roll(conn: sqlite3.Connection, roll_id: int) -> Roll | None:
 def create_roll(conn: sqlite3.Connection, roll: Roll, frames_per_roll: int) -> Roll:
     now = datetime.now().isoformat()
     cur = conn.execute(
-        """INSERT INTO rolls (user_id, film_stock_id, camera_id, status,
+        """INSERT INTO rolls (user_id, film_stock_id, camera_id, lens_id, status,
            loaded_date, finished_date, sent_for_dev_date, developed_date,
            notes, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (roll.user_id, roll.film_stock_id, roll.camera_id, roll.status,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (roll.user_id, roll.film_stock_id, roll.camera_id, roll.lens_id, roll.status,
          roll.loaded_date, roll.finished_date, roll.sent_for_dev_date,
          roll.developed_date, roll.notes, now),
     )
     roll_id = cur.lastrowid
-    # Pre-populate frames
+    # Pre-populate frames, seeding with roll's default lens if set
     for i in range(1, frames_per_roll + 1):
         conn.execute(
-            "INSERT INTO frames (roll_id, frame_number) VALUES (?, ?)",
-            (roll_id, i),
+            "INSERT INTO frames (roll_id, frame_number, lens_id) VALUES (?, ?, ?)",
+            (roll_id, i, roll.lens_id),
         )
     conn.commit()
     return get_roll(conn, roll_id)
@@ -386,15 +397,21 @@ def create_roll(conn: sqlite3.Connection, roll: Roll, frames_per_roll: int) -> R
 
 def update_roll(conn: sqlite3.Connection, roll: Roll) -> Roll:
     conn.execute(
-        """UPDATE rolls SET film_stock_id=?, camera_id=?, status=?,
+        """UPDATE rolls SET film_stock_id=?, camera_id=?, lens_id=?, status=?,
            loaded_date=?, finished_date=?, sent_for_dev_date=?,
            developed_date=?, notes=? WHERE id=?""",
-        (roll.film_stock_id, roll.camera_id, roll.status,
+        (roll.film_stock_id, roll.camera_id, roll.lens_id, roll.status,
          roll.loaded_date, roll.finished_date, roll.sent_for_dev_date,
          roll.developed_date, roll.notes, roll.id),
     )
     conn.commit()
     return get_roll(conn, roll.id)
+
+
+def set_roll_frames_lens(conn: sqlite3.Connection, roll_id: int, lens_id: int | None) -> None:
+    """Set the default lens on all frames of a roll (used when loading a roll)."""
+    conn.execute("UPDATE frames SET lens_id = ? WHERE roll_id = ?", (lens_id, roll_id))
+    conn.commit()
 
 
 def delete_roll(conn: sqlite3.Connection, roll_id: int) -> None:

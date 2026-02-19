@@ -80,6 +80,7 @@ class Roll:
     user_id: int = 0
     film_stock_id: int = 0
     camera_id: int | None = None
+    lens_id: int | None = None
     status: str = "fresh"
     loaded_date: date | None = None
     finished_date: date | None = None

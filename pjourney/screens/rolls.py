@@ -73,8 +73,8 @@ class CreateRollModal(ModalScreen[tuple[int, str] | None]):
         self.dismiss(None)
 
 
-class LoadRollModal(ModalScreen[int | None]):
-    """Select a camera to load a roll into."""
+class LoadRollModal(ModalScreen[tuple[int, int | None] | None]):
+    """Select a camera and optional lens to load a roll into."""
 
     CSS = """
     LoadRollModal {
@@ -87,6 +87,9 @@ class LoadRollModal(ModalScreen[int | None]):
         padding: 1 2;
         background: $surface;
     }
+    #form-box Label {
+        margin: 1 0 0 0;
+    }
     .form-buttons {
         height: auto;
         margin: 1 0 0 0;
@@ -98,13 +101,18 @@ class LoadRollModal(ModalScreen[int | None]):
 
     def compose(self) -> ComposeResult:
         cameras = db.get_cameras(self.app.db_conn, self.app.current_user.id)
-        options = [(f"{c.name} ({c.make} {c.model})", c.id) for c in cameras]
+        camera_options = [(f"{c.name} ({c.make} {c.model})", c.id) for c in cameras]
+        lenses = db.get_lenses(self.app.db_conn, self.app.current_user.id)
+        lens_options = [("None", 0)] + [(f"{l.name} ({l.focal_length})", l.id) for l in lenses]
         with Vertical(id="form-box"):
             yield Static("Load Roll into Camera", markup=False)
-            if options:
-                yield Select(options, id="camera-select")
+            yield Label("Camera")
+            if camera_options:
+                yield Select(camera_options, id="camera-select")
             else:
                 yield Static("No cameras available. Add one first.", markup=False)
+            yield Label("Lens (installed on camera)")
+            yield Select(lens_options, value=0, id="lens-select")
             with Horizontal(classes="form-buttons"):
                 yield Button("Load", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -117,7 +125,9 @@ class LoadRollModal(ModalScreen[int | None]):
                 return
         except Exception:
             return
-        self.dismiss(camera_id)
+        lens_val = self.query_one("#lens-select", Select).value
+        lens_id = lens_val if lens_val and lens_val != 0 else None
+        self.dismiss((camera_id, lens_id))
 
     @on(Button.Pressed, "#cancel-btn")
     def cancel(self) -> None:
@@ -269,13 +279,16 @@ class RollsScreen(Screen):
         if not roll or roll.status != "fresh":
             return
 
-        def on_result(camera_id: int | None) -> None:
-            if camera_id is None:
+        def on_result(result: tuple[int, int | None] | None) -> None:
+            if result is None:
                 return
+            camera_id, lens_id = result
             roll.camera_id = camera_id
+            roll.lens_id = lens_id
             roll.status = "loaded"
             roll.loaded_date = date.today()
             db.update_roll(self.app.db_conn, roll)
+            db.set_roll_frames_lens(self.app.db_conn, roll_id, lens_id)
             self._refresh()
         self.app.push_screen(LoadRollModal(), on_result)
 
