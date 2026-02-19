@@ -147,6 +147,12 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+    try:
+        conn.execute("ALTER TABLE film_stocks ADD COLUMN media_type TEXT NOT NULL DEFAULT 'analog'")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
 
 def _ensure_default_user(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
@@ -389,19 +395,19 @@ def save_film_stock(conn: sqlite3.Connection, stock: FilmStock) -> FilmStock:
     now = datetime.now().isoformat()
     if stock.id is None:
         cur = conn.execute(
-            """INSERT INTO film_stocks (user_id, brand, name, type, iso, format,
+            """INSERT INTO film_stocks (user_id, brand, name, type, media_type, iso, format,
                frames_per_roll, notes, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (stock.user_id, stock.brand, stock.name, stock.type, stock.iso,
-             stock.format, stock.frames_per_roll, stock.notes, now),
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (stock.user_id, stock.brand, stock.name, stock.type, stock.media_type,
+             stock.iso, stock.format, stock.frames_per_roll, stock.notes, now),
         )
         conn.commit()
         return get_film_stock(conn, cur.lastrowid)
     else:
         conn.execute(
-            """UPDATE film_stocks SET brand=?, name=?, type=?, iso=?, format=?,
+            """UPDATE film_stocks SET brand=?, name=?, type=?, media_type=?, iso=?, format=?,
                frames_per_roll=?, notes=? WHERE id=?""",
-            (stock.brand, stock.name, stock.type, stock.iso, stock.format,
+            (stock.brand, stock.name, stock.type, stock.media_type, stock.iso, stock.format,
              stock.frames_per_roll, stock.notes, stock.id),
         )
         conn.commit()
@@ -445,12 +451,14 @@ def create_roll(conn: sqlite3.Connection, roll: Roll, frames_per_roll: int) -> R
          roll.developed_date, roll.notes, now),
     )
     roll_id = cur.lastrowid
-    # Pre-populate frames, seeding with roll's default lens if set
-    for i in range(1, frames_per_roll + 1):
-        conn.execute(
-            "INSERT INTO frames (roll_id, frame_number, lens_id) VALUES (?, ?, ?)",
-            (roll_id, i, roll.lens_id),
-        )
+    # Pre-populate frames, seeding with roll's default lens if set.
+    # frames_per_roll == 0 means unlimited (digital), so skip pre-population.
+    if frames_per_roll > 0:
+        for i in range(1, frames_per_roll + 1):
+            conn.execute(
+                "INSERT INTO frames (roll_id, frame_number, lens_id) VALUES (?, ?, ?)",
+                (roll_id, i, roll.lens_id),
+            )
     conn.commit()
     return get_roll(conn, roll_id)
 

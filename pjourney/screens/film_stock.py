@@ -21,6 +21,7 @@ FILM_FORMATS = [
     ("4x5", "4x5"),
     ("8x10", "8x10"),
 ]
+MEDIA_TYPES = [("Analog Film", "analog"), ("Digital / Memory Card", "digital")]
 
 
 class FilmStockFormModal(ModalScreen[FilmStock | None]):
@@ -56,46 +57,68 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
         s = self.stock
         with Vertical(id="form-box"):
             yield Static("Edit Film Stock" if s.id else "Add Film Stock", markup=False)
-            yield Label("Brand (e.g. Kodak, Ilford)")
+            yield Label("Media Type")
+            yield Select(
+                MEDIA_TYPES,
+                value=s.media_type,
+                id="media_type",
+            )
+            yield Label("Brand (e.g. Kodak, Ilford, SanDisk)")
             yield Input(value=s.brand, id="brand")
-            yield Label("Name (e.g. Portra 400, HP5 Plus)")
+            yield Label("Name (e.g. Portra 400, HP5 Plus, Primary Card)")
             yield Input(value=s.name, id="name")
-            yield Label("Type")
-            yield Select(
-                FILM_TYPES,
-                value=s.type,
-                id="type",
-            )
-            yield Label("ISO")
-            yield Input(value=str(s.iso), id="iso")
-            yield Label("Format")
-            yield Select(
-                FILM_FORMATS,
-                value=s.format,
-                id="format",
-            )
-            yield Label("Frames Per Roll")
-            yield Input(value=str(s.frames_per_roll), id="frames_per_roll")
+            with Vertical(id="analog-fields"):
+                yield Label("Film Type")
+                yield Select(
+                    FILM_TYPES,
+                    value=s.type,
+                    id="type",
+                )
+                yield Label("ISO")
+                yield Input(value=str(s.iso), id="iso")
+                yield Label("Format")
+                yield Select(
+                    FILM_FORMATS,
+                    value=s.format,
+                    id="format",
+                )
+                yield Label("Frames Per Roll")
+                yield Input(value=str(s.frames_per_roll), id="frames_per_roll")
             yield Label("Notes")
             yield Input(value=s.notes, id="notes")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
 
+    def on_mount(self) -> None:
+        self.query_one("#analog-fields").display = (self.stock.media_type == "analog")
+
+    @on(Select.Changed, "#media_type")
+    def on_media_type_changed(self, event: Select.Changed) -> None:
+        self.query_one("#analog-fields").display = (event.value == "analog")
+
     @on(Button.Pressed, "#save-btn")
     def save(self) -> None:
         s = self.stock
+        media_type = self.query_one("#media_type", Select).value or "analog"
+        s.media_type = media_type
         s.brand = self.query_one("#brand", Input).value.strip()
         s.name = self.query_one("#name", Input).value.strip()
-        s.type = self.query_one("#type", Select).value
-        iso_str = self.query_one("#iso", Input).value.strip()
-        s.iso = int(iso_str) if iso_str else 400
-        s.format = self.query_one("#format", Select).value
-        fpr = self.query_one("#frames_per_roll", Input).value.strip()
-        s.frames_per_roll = int(fpr) if fpr else 36
-        s.notes = self.query_one("#notes", Input).value.strip()
         if not s.name:
             return
+        if media_type == "digital":
+            s.type = "color"
+            s.iso = 0
+            s.format = ""
+            s.frames_per_roll = 0
+        else:
+            s.type = self.query_one("#type", Select).value
+            iso_str = self.query_one("#iso", Input).value.strip()
+            s.iso = int(iso_str) if iso_str else 400
+            s.format = self.query_one("#format", Select).value
+            fpr = self.query_one("#frames_per_roll", Input).value.strip()
+            s.frames_per_roll = int(fpr) if fpr else 36
+        s.notes = self.query_one("#notes", Input).value.strip()
         s.user_id = self.app.current_user.id
         self.dismiss(s)
 
@@ -138,7 +161,7 @@ class FilmStockScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#stock-table", InventoryTable)
-        table.add_columns("ID", "Brand", "Name", "Type", "ISO", "Format", "Frames")
+        table.add_columns("ID", "Brand", "Name", "Media", "Type", "ISO", "Format", "Frames")
         self._refresh()
 
     def on_screen_resume(self) -> None:
@@ -149,10 +172,21 @@ class FilmStockScreen(Screen):
         table.clear()
         stocks = db.get_film_stocks(self.app.db_conn, self.app.current_user.id)
         for s in stocks:
-            type_display = "Color" if s.type == "color" else "B&W"
+            if s.media_type == "digital":
+                media_display = "Digital"
+                type_display = "—"
+                iso_display = "—"
+                format_display = "—"
+                frames_display = "—"
+            else:
+                media_display = "Analog"
+                type_display = "Color" if s.type == "color" else "B&W"
+                iso_display = str(s.iso)
+                format_display = s.format
+                frames_display = str(s.frames_per_roll)
             table.add_row(
-                str(s.id), s.brand, s.name, type_display,
-                str(s.iso), s.format, str(s.frames_per_roll),
+                str(s.id), s.brand, s.name, media_display, type_display,
+                iso_display, format_display, frames_display,
                 key=str(s.id),
             )
 

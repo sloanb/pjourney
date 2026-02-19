@@ -43,7 +43,15 @@ class CreateRollModal(ModalScreen[tuple[int, str] | None]):
 
     def compose(self) -> ComposeResult:
         stocks = db.get_film_stocks(self.app.db_conn, self.app.current_user.id)
-        options = [(f"{s.brand} {s.name} ({s.format}, ISO {s.iso})", s.id) for s in stocks]
+        analog = [s for s in stocks if s.media_type == "analog"]
+        digital = [s for s in stocks if s.media_type == "digital"]
+        options = []
+        if analog:
+            options += [("── Analog Film ──", Select.NULL)]
+            options += [(f"{s.brand} {s.name} ({s.format}, ISO {s.iso})", s.id) for s in analog]
+        if digital:
+            options += [("── Memory Cards ──", Select.NULL)]
+            options += [(f"{s.brand} {s.name}", s.id) for s in digital]
         with Vertical(id="form-box"):
             yield Static("Create New Roll", markup=False)
             yield Label("Film Stock")

@@ -75,6 +75,7 @@ class FilmStock:
     brand: str = ""
     name: str = ""
     type: str = "color"  # "color" or "black_and_white"
+    media_type: str = "analog"  # "analog" or "digital"
     iso: int = 400
     format: str = "35mm"
     frames_per_roll: int = 36
