@@ -14,7 +14,7 @@ from .provider import (
 )
 
 # Public app key for PKCE desktop OAuth — not a secret.
-DROPBOX_APP_KEY = "YOUR_APP_KEY_HERE"
+DROPBOX_APP_KEY = "naghxm7tskyuush"
 
 PROVIDER_NAME = "dropbox"
 
