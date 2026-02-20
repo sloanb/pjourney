@@ -52,7 +52,7 @@ class DevelopmentTypeModal(ModalScreen[str | None]):
         align: center middle;
     }
     #type-box {
-        width: 50;
+        width: 64;
         height: auto;
         border: heavy $accent;
         padding: 1 2;
