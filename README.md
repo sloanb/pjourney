@@ -64,7 +64,7 @@ pjourney/
 docs/
   ERROR_CODES.md          — User-facing error code reference
 tests/
-  test_database.py        — CRUD and schema tests (42 tests)
+  test_database.py        — CRUD and schema tests (68 tests)
   test_models.py          — Dataclass default/value tests (22 tests)
   test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests (16 tests)
   test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests (9 tests)
@@ -72,7 +72,7 @@ tests/
   test_dev_modals.py      — Development flow modal tests (21 tests)
   test_cloud_settings.py  — cloud_settings DB CRUD tests (6 tests)
   test_cloud_provider.py  — CloudProvider ABC and CredentialStore tests (11 tests)
-  test_dropbox_provider.py — DropboxProvider tests with mocked SDK (24 tests)
+  test_dropbox_provider.py — DropboxProvider tests with mocked SDK (25 tests)
   test_cloud_modals.py    — Cloud admin modal tests (22 tests)
 ```
 

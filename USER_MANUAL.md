@@ -190,6 +190,7 @@ A film stock entry represents a type of film you own or have used — not a spec
 | ISO | Box speed (e.g. 100, 400, 3200) |
 | Format | 35mm, 120, 4x5, or 8x10 |
 | Frames Per Roll | Typically 36 for 35mm, 12 for 120 |
+| Quantity On Hand | How many rolls of this stock you currently have |
 | Notes | Anything useful — development times, push/pull notes |
 
 **Film stock actions**
