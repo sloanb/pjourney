@@ -60,20 +60,20 @@ pjourney/
   cloud/
     provider.py           — CloudProvider ABC, CloudProviderError, shared dataclasses
     credentials.py        — CredentialStore (OS keyring wrapper)
-    dropbox_provider.py   — DropboxProvider implementation (PKCE OAuth, upload/download)
+    dropbox_provider.py   — DropboxProvider implementation (PKCE OAuth, folder browse, upload/download/disconnect)
 docs/
   ERROR_CODES.md          — User-facing error code reference
 tests/
-  test_database.py        — CRUD and schema tests (33 tests)
-  test_models.py          — Dataclass default/value tests
-  test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests
-  test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests
-  test_errors.py          — ErrorCode enum and app_error() helper tests
-  test_dev_modals.py      — Development flow modal tests
+  test_database.py        — CRUD and schema tests (42 tests)
+  test_models.py          — Dataclass default/value tests (22 tests)
+  test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests (16 tests)
+  test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests (9 tests)
+  test_errors.py          — ErrorCode enum and app_error() helper tests (14 tests)
+  test_dev_modals.py      — Development flow modal tests (21 tests)
   test_cloud_settings.py  — cloud_settings DB CRUD tests (6 tests)
   test_cloud_provider.py  — CloudProvider ABC and CredentialStore tests (11 tests)
-  test_dropbox_provider.py — DropboxProvider tests with mocked SDK (18 tests)
-  test_cloud_modals.py    — Cloud admin modal tests (15 tests)
+  test_dropbox_provider.py — DropboxProvider tests with mocked SDK (24 tests)
+  test_cloud_modals.py    — Cloud admin modal tests (22 tests)
 ```
 
 ## Roll Lifecycle
@@ -91,3 +91,4 @@ Each transition records a date automatically. Frames are pre-created when a roll
 - Schema migrations handled in `_migrate_db()` using `ALTER TABLE … ADD COLUMN` with exception swallowing
 - Passwords hashed with **argon2-cffi**; rehash-on-verify is supported
 - Screen-to-screen data passing uses app-level instance variables (`_camera_detail_id`, `_lens_detail_id`, `_frames_roll_id`)
+- Cloud sync uses PKCE OAuth (no client secret) via the Dropbox SDK; tokens are stored in the OS keyring via `keyring`; Dropbox API calls run off the main thread with `asyncio.to_thread` to keep the TUI responsive

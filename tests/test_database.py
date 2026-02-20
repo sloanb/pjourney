@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from pjourney.db import database as db
-from pjourney.db.models import Camera, CameraIssue, CloudSettings, DevelopmentStep, FilmStock, Frame, Lens, Roll, RollDevelopment
+from pjourney.db.models import Camera, CameraIssue, CloudSettings, DevelopmentStep, FilmStock, Frame, Lens, LensNote, Roll, RollDevelopment
 
 
 @pytest.fixture
@@ -466,3 +466,408 @@ class TestGetUsageStatsPopulated:
         assert stats["film_stock"] is None
         assert stats["camera"] is None
         assert stats["lens"] is None
+
+
+# ---------------------------------------------------------------------------
+# Migration success-path tests
+# ---------------------------------------------------------------------------
+
+# Minimal DDL blocks shared by migration tests — each test builds only the
+# tables it needs so that _migrate_db can attempt the ALTER TABLE statements
+# without hitting "no such table" errors.
+
+_ROLLS_NO_LENS_ID = """
+    CREATE TABLE rolls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        film_stock_id INTEGER NOT NULL,
+        camera_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'fresh',
+        loaded_date DATE,
+        finished_date DATE,
+        sent_for_dev_date DATE,
+        developed_date DATE,
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+"""
+
+_CAMERAS_NO_TYPE = """
+    CREATE TABLE cameras (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        make TEXT NOT NULL DEFAULT '',
+        model TEXT NOT NULL DEFAULT '',
+        serial_number TEXT NOT NULL DEFAULT '',
+        year_built INTEGER,
+        year_purchased INTEGER,
+        purchased_from TEXT,
+        description TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+"""
+
+_FILM_STOCKS_NO_MEDIA_TYPE = """
+    CREATE TABLE film_stocks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        brand TEXT NOT NULL DEFAULT '',
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'color',
+        iso INTEGER NOT NULL DEFAULT 400,
+        format TEXT NOT NULL DEFAULT '35mm',
+        frames_per_roll INTEGER NOT NULL DEFAULT 36,
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+"""
+
+
+class TestMigrateDbSuccessPaths:
+    """Verify that _migrate_db applies ALTER TABLE successfully on a DB that
+    was created without the migrated columns (simulating an older schema)."""
+
+    def test_migrate_adds_lens_id_to_rolls(self):
+        """A DB created without lens_id on rolls gets it added by _migrate_db."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "old.db"
+            conn = db.get_connection(path)
+            # Build minimal schema: rolls without lens_id, plus supporting tables
+            # that _migrate_db touches (cameras, film_stocks).
+            conn.executescript(
+                _ROLLS_NO_LENS_ID
+                + _CAMERAS_NO_TYPE
+                + _FILM_STOCKS_NO_MEDIA_TYPE
+            )
+            conn.commit()
+            # Should succeed and add lens_id column to rolls
+            db._migrate_db(conn)
+            # Verify via PRAGMA — safe even when foreign-key tables are absent
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(rolls)").fetchall()
+            }
+            assert "lens_id" in columns
+            conn.close()
+
+    def test_migrate_adds_camera_type_and_sensor_size_to_cameras(self):
+        """A DB created without camera_type/sensor_size gets both columns added."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "old.db"
+            conn = db.get_connection(path)
+            # rolls already has lens_id; cameras is missing camera_type/sensor_size
+            conn.executescript("""
+                CREATE TABLE rolls (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    film_stock_id INTEGER NOT NULL,
+                    lens_id INTEGER,
+                    camera_id INTEGER,
+                    status TEXT NOT NULL DEFAULT 'fresh',
+                    loaded_date DATE,
+                    finished_date DATE,
+                    sent_for_dev_date DATE,
+                    developed_date DATE,
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """
+            + _CAMERAS_NO_TYPE
+            + _FILM_STOCKS_NO_MEDIA_TYPE)
+            conn.commit()
+            db._migrate_db(conn)
+            # Verify both columns now exist via PRAGMA
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(cameras)").fetchall()
+            }
+            assert "camera_type" in columns
+            assert "sensor_size" in columns
+            conn.close()
+
+    def test_migrate_adds_media_type_to_film_stocks(self):
+        """A DB without media_type on film_stocks gets it added."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "old.db"
+            conn = db.get_connection(path)
+            # rolls already has lens_id; cameras already has type columns;
+            # film_stocks is missing media_type
+            conn.executescript("""
+                CREATE TABLE rolls (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    film_stock_id INTEGER NOT NULL,
+                    lens_id INTEGER,
+                    camera_id INTEGER,
+                    status TEXT NOT NULL DEFAULT 'fresh',
+                    loaded_date DATE,
+                    finished_date DATE,
+                    sent_for_dev_date DATE,
+                    developed_date DATE,
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE cameras (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    camera_type TEXT NOT NULL DEFAULT 'film',
+                    sensor_size TEXT
+                );
+            """
+            + _FILM_STOCKS_NO_MEDIA_TYPE)
+            conn.commit()
+            db._migrate_db(conn)
+            # Verify media_type column now exists via PRAGMA
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(film_stocks)").fetchall()
+            }
+            assert "media_type" in columns
+            conn.close()
+
+
+# ---------------------------------------------------------------------------
+# verify_password rehash path
+# ---------------------------------------------------------------------------
+
+class TestVerifyPasswordRehash:
+    """Cover the check_needs_rehash == True branch in verify_password."""
+
+    def test_rehash_updates_stored_hash(self, conn):
+        """When the stored hash is flagged as outdated, verify_password
+        re-hashes and persists the new hash to the database.
+
+        argon2.PasswordHasher.check_needs_rehash is a read-only C extension
+        method so we cannot patch it directly with patch.object.  Instead we
+        replace the module-level ``db.ph`` with a lightweight stand-in whose
+        verify() succeeds and whose check_needs_rehash() always returns True,
+        then restore the original afterwards.
+        """
+        from unittest.mock import patch, MagicMock
+
+        user = db.create_user(conn, "rehashuser", "correctpass")
+        original_hash = conn.execute(
+            "SELECT password_hash FROM users WHERE id = ?", (user.id,)
+        ).fetchone()["password_hash"]
+
+        # Build a fake PasswordHasher that wraps the real one but overrides
+        # check_needs_rehash to return True, triggering the rehash branch.
+        real_ph = db.ph
+        fake_ph = MagicMock(wraps=real_ph)
+        fake_ph.check_needs_rehash.return_value = True
+        # hash() must produce a real verifiable hash for the UPDATE to be meaningful
+        fake_ph.hash.side_effect = real_ph.hash
+
+        with patch.object(db, "ph", fake_ph):
+            result = db.verify_password(conn, "rehashuser", "correctpass")
+
+        assert result is not None
+        assert result.username == "rehashuser"
+        # The stored hash must have been replaced with the new one
+        new_hash = conn.execute(
+            "SELECT password_hash FROM users WHERE id = ?", (user.id,)
+        ).fetchone()["password_hash"]
+        assert new_hash != original_hash
+
+
+# ---------------------------------------------------------------------------
+# Camera issues — list and delete
+# ---------------------------------------------------------------------------
+
+class TestCameraIssuesList:
+    """Cover get_camera_issues (list) and delete_camera_issue."""
+
+    def test_get_camera_issues_returns_all_for_camera(self, conn):
+        user = db.get_users(conn)[0]
+        camera = db.save_camera(conn, Camera(user_id=user.id, name="Cam", make="Nikon"))
+        db.save_camera_issue(conn, CameraIssue(
+            camera_id=camera.id, description="Light leak", date_noted="2024-01-01"
+        ))
+        db.save_camera_issue(conn, CameraIssue(
+            camera_id=camera.id, description="Sticky shutter", date_noted="2024-01-02"
+        ))
+        issues = db.get_camera_issues(conn, camera.id)
+        assert len(issues) == 2
+
+    def test_get_camera_issues_returns_empty_when_none(self, conn):
+        user = db.get_users(conn)[0]
+        camera = db.save_camera(conn, Camera(user_id=user.id, name="Cam", make="Nikon"))
+        issues = db.get_camera_issues(conn, camera.id)
+        assert issues == []
+
+    def test_delete_camera_issue_removes_it(self, conn):
+        user = db.get_users(conn)[0]
+        camera = db.save_camera(conn, Camera(user_id=user.id, name="Cam", make="Canon"))
+        issue = db.save_camera_issue(conn, CameraIssue(
+            camera_id=camera.id, description="Fungus on glass", date_noted="2024-03-01"
+        ))
+        db.delete_camera_issue(conn, issue.id)
+        remaining = db.get_camera_issues(conn, camera.id)
+        assert remaining == []
+
+
+# ---------------------------------------------------------------------------
+# Lens list and update
+# ---------------------------------------------------------------------------
+
+class TestLensListAndUpdate:
+    """Cover get_lenses (list all) and save_lens update branch."""
+
+    def test_get_lenses_returns_all_for_user(self, conn):
+        user = db.get_users(conn)[0]
+        db.save_lens(conn, Lens(user_id=user.id, name="50mm f/1.4", make="Nikon"))
+        db.save_lens(conn, Lens(user_id=user.id, name="35mm f/2", make="Canon"))
+        lenses = db.get_lenses(conn, user.id)
+        assert len(lenses) == 2
+
+    def test_get_lenses_returns_empty_when_none(self, conn):
+        user = db.get_users(conn)[0]
+        assert db.get_lenses(conn, user.id) == []
+
+    def test_update_lens_changes_fields(self, conn):
+        user = db.get_users(conn)[0]
+        lens = db.save_lens(
+            conn,
+            Lens(user_id=user.id, name="Old Name", make="Nikon", focal_length="50mm"),
+        )
+        lens.name = "Updated Name"
+        lens.focal_length = "55mm"
+        updated = db.save_lens(conn, lens)
+        assert updated.name == "Updated Name"
+        assert updated.focal_length == "55mm"
+
+
+# ---------------------------------------------------------------------------
+# Lens notes CRUD
+# ---------------------------------------------------------------------------
+
+class TestLensNotesCRUD:
+    """Cover get_lens_notes, get_lens_note, save_lens_note (insert + update),
+    and delete_lens_note."""
+
+    def _make_lens(self, conn):
+        user = db.get_users(conn)[0]
+        return db.save_lens(conn, Lens(user_id=user.id, name="50mm", make="Nikon"))
+
+    def test_save_lens_note_creates_note(self, conn):
+        lens = self._make_lens(conn)
+        note = LensNote(lens_id=lens.id, content="Great sharpness wide open")
+        saved = db.save_lens_note(conn, note)
+        assert saved.id is not None
+        assert saved.content == "Great sharpness wide open"
+
+    def test_get_lens_notes_returns_all(self, conn):
+        lens = self._make_lens(conn)
+        db.save_lens_note(conn, LensNote(lens_id=lens.id, content="Note 1"))
+        db.save_lens_note(conn, LensNote(lens_id=lens.id, content="Note 2"))
+        notes = db.get_lens_notes(conn, lens.id)
+        assert len(notes) == 2
+
+    def test_get_lens_notes_empty_when_none(self, conn):
+        lens = self._make_lens(conn)
+        assert db.get_lens_notes(conn, lens.id) == []
+
+    def test_get_lens_note_by_id(self, conn):
+        lens = self._make_lens(conn)
+        saved = db.save_lens_note(conn, LensNote(lens_id=lens.id, content="Specific note"))
+        fetched = db.get_lens_note(conn, saved.id)
+        assert fetched is not None
+        assert fetched.content == "Specific note"
+
+    def test_get_lens_note_returns_none_when_missing(self, conn):
+        result = db.get_lens_note(conn, 99999)
+        assert result is None
+
+    def test_update_lens_note_changes_content(self, conn):
+        lens = self._make_lens(conn)
+        saved = db.save_lens_note(conn, LensNote(lens_id=lens.id, content="Original"))
+        saved.content = "Updated content"
+        updated = db.save_lens_note(conn, saved)
+        assert updated.content == "Updated content"
+
+    def test_delete_lens_note_removes_it(self, conn):
+        lens = self._make_lens(conn)
+        saved = db.save_lens_note(conn, LensNote(lens_id=lens.id, content="To delete"))
+        db.delete_lens_note(conn, saved.id)
+        assert db.get_lens_note(conn, saved.id) is None
+
+
+# ---------------------------------------------------------------------------
+# Film stock list and update
+# ---------------------------------------------------------------------------
+
+class TestFilmStockListAndUpdate:
+    """Cover get_film_stocks (list all) and save_film_stock update branch."""
+
+    def test_get_film_stocks_returns_all_for_user(self, conn):
+        user = db.get_users(conn)[0]
+        db.save_film_stock(conn, FilmStock(user_id=user.id, brand="Kodak", name="Portra 400"))
+        db.save_film_stock(conn, FilmStock(user_id=user.id, brand="Ilford", name="HP5"))
+        stocks = db.get_film_stocks(conn, user.id)
+        assert len(stocks) == 2
+
+    def test_get_film_stocks_returns_empty_when_none(self, conn):
+        user = db.get_users(conn)[0]
+        assert db.get_film_stocks(conn, user.id) == []
+
+    def test_update_film_stock_changes_fields(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(
+            conn,
+            FilmStock(user_id=user.id, brand="Kodak", name="Gold 200", iso=200),
+        )
+        stock.name = "Gold 400"
+        stock.iso = 400
+        updated = db.save_film_stock(conn, stock)
+        assert updated.name == "Gold 400"
+        assert updated.iso == 400
+
+
+# ---------------------------------------------------------------------------
+# get_rolls with status filter
+# ---------------------------------------------------------------------------
+
+class TestGetRollsWithStatusFilter:
+    """Cover the get_rolls(conn, user_id, status=...) filtered branch."""
+
+    def _make_roll(self, conn, user, brand, name, status="fresh"):
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand=brand, name=name, frames_per_roll=24,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 24)
+        if status != "fresh":
+            roll.status = status
+            roll = db.update_roll(conn, roll)
+        return roll
+
+    def test_get_rolls_with_status_filter_returns_only_matching(self, conn):
+        user = db.get_users(conn)[0]
+        self._make_roll(conn, user, "Kodak", "Portra 400", status="fresh")
+        self._make_roll(conn, user, "Fuji", "Superia 400", status="loaded")
+
+        fresh_rolls = db.get_rolls(conn, user.id, status="fresh")
+        loaded_rolls = db.get_rolls(conn, user.id, status="loaded")
+
+        assert len(fresh_rolls) == 1
+        assert all(r.status == "fresh" for r in fresh_rolls)
+        assert len(loaded_rolls) == 1
+        assert all(r.status == "loaded" for r in loaded_rolls)
+
+    def test_get_rolls_without_filter_returns_all(self, conn):
+        user = db.get_users(conn)[0]
+        self._make_roll(conn, user, "Kodak", "Tri-X", status="fresh")
+        self._make_roll(conn, user, "Ilford", "HP5", status="shooting")
+
+        all_rolls = db.get_rolls(conn, user.id)
+        assert len(all_rolls) == 2
+
+    def test_get_rolls_filter_returns_empty_when_no_match(self, conn):
+        user = db.get_users(conn)[0]
+        self._make_roll(conn, user, "Kodak", "Portra", status="fresh")
+
+        developed_rolls = db.get_rolls(conn, user.id, status="developed")
+        assert developed_rolls == []

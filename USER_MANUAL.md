@@ -322,7 +322,7 @@ The Cloud Sync section lets you back up and restore your database to and from Dr
 
 Press **Link Account**. pjourney will open a Dropbox authorisation page in your browser. Sign in, authorise pjourney, then paste the code shown into the dialog.
 
-Once linked the status line shows your Dropbox account name and the last sync time.
+Once linked the status line shows your Dropbox account name, selected backup folder (if set), and the last sync time.
 
 **Selecting a backup folder**
 

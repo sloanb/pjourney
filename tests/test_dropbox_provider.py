@@ -318,3 +318,21 @@ class TestCredentialStoreDeleteAllUnknownProvider:
         store = CredentialStore()
         store.delete_all("unknown_provider")
         mock_keyring.delete_password.assert_not_called()
+
+
+class TestFinishAuthException:
+    """Cover the except branch in finish_auth when _auth_flow.finish() raises."""
+
+    @patch("pjourney.cloud.dropbox_provider.DropboxOAuth2FlowNoRedirect")
+    def test_finish_auth_wraps_flow_finish_exception(self, mock_flow_cls, mock_creds):
+        """When _auth_flow.finish() raises, finish_auth wraps it in CloudProviderError."""
+        mock_flow = MagicMock()
+        mock_flow.start.return_value = "https://dropbox.com/auth"
+        mock_flow.finish.side_effect = Exception("bad token")
+        mock_flow_cls.return_value = mock_flow
+
+        provider = DropboxProvider(mock_creds)
+        provider.get_auth_url()  # populates _auth_flow
+
+        with pytest.raises(CloudProviderError, match="Auth failed"):
+            provider.finish_auth("invalid_code", "pkce")
