@@ -13,6 +13,7 @@ from pjourney.widgets.app_header import AppHeader
 from pjourney.db import database as db
 from pjourney.db.models import PROCESS_TYPES, ROLL_STATUSES, DevelopmentStep, Roll, RollDevelopment
 from pjourney.errors import ErrorCode, app_error
+from pjourney.widgets.confirm_modal import ConfirmModal
 from pjourney.widgets.inventory_table import InventoryTable
 
 
@@ -709,11 +710,17 @@ class RollsScreen(Screen):
         roll_id = self._get_selected_id()
         if roll_id is None:
             return
-        try:
-            db.delete_roll(self.app.db_conn, roll_id)
-            self._refresh()
-        except Exception:
-            app_error(self, ErrorCode.DB_DELETE)
+
+        def on_confirmed(confirmed: bool) -> None:
+            if not confirmed:
+                return
+            try:
+                db.delete_roll(self.app.db_conn, roll_id)
+                self._refresh()
+            except Exception:
+                app_error(self, ErrorCode.DB_DELETE)
+
+        self.app.push_screen(ConfirmModal("Delete this roll and all its frames? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#back-btn")
     def action_go_back(self) -> None:

@@ -325,8 +325,15 @@ class CloudRestoreModal(ModalScreen[str | None]):
     def on_mount(self) -> None:
         table = self.query_one("#file-table", InventoryTable)
         table.add_columns("Name", "Size", "Modified")
+        self._load_files()
+
+    @work(exclusive=True)
+    async def _load_files(self) -> None:
         try:
-            files = self._provider.list_files(self._remote_folder)
+            files = await asyncio.to_thread(
+                self._provider.list_files, self._remote_folder
+            )
+            table = self.query_one("#file-table", InventoryTable)
             for f in files:
                 size_kb = f"{f.size / 1024:.1f} KB" if f.size else ""
                 table.add_row(f.name, size_kb, f.modified, key=f.path)
@@ -591,6 +598,7 @@ class AdminScreen(Screen):
             CloudRestoreModal(provider, settings.remote_folder), on_file
         )
 
+    @work(exclusive=True)
     async def _do_restore(self, provider: CloudProvider, remote_path: str) -> None:
         self._set_cloud_status("Downloading...")
         try:

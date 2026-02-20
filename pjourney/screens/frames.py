@@ -86,7 +86,8 @@ class FrameEditModal(ModalScreen[Frame | None]):
         try:
             f.date_taken = date.fromisoformat(date_str) if date_str else None
         except ValueError:
-            f.date_taken = None
+            app_error(self, ErrorCode.VAL_DATE)
+            return
         f.location = self.query_one("#location", Input).value.strip()
         f.notes = self.query_one("#notes", Input).value.strip()
         self.dismiss(f)
