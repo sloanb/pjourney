@@ -9,7 +9,7 @@ Tracks your gear and follows film rolls through their full lifecycle — from lo
 ## Requirements
 
 - Python 3.12+
-- Dependencies listed in `pyproject.toml` (Textual, argon2-cffi)
+- Dependencies listed in `pyproject.toml` (Textual, argon2-cffi, dropbox, keyring)
 
 ## Setup
 
@@ -43,7 +43,7 @@ pjourney/
   errors.py               — ErrorCode enum and app_error() toast helper
   db/
     database.py           — Schema, migrations, all CRUD functions
-    models.py             — Dataclasses (Camera, Lens, FilmStock, Roll, Frame, …)
+    models.py             — Dataclasses (Camera, Lens, FilmStock, Roll, Frame, CloudSettings, …)
   screens/
     login.py              — Login / account creation
     dashboard.py          — Home screen with inventory stats and loaded cameras
@@ -52,11 +52,15 @@ pjourney/
     film_stock.py         — Film stock catalogue
     rolls.py              — Roll lifecycle management and frame access
     frames.py             — Per-frame shooting details
-    admin.py              — DB backup/vacuum and user management
+    admin.py              — DB backup/vacuum, cloud sync, and user management
   widgets/
     inventory_table.py    — Shared DataTable with vim-style navigation
     app_header.py         — Common screen header
     confirm_modal.py      — Reusable delete confirmation modal
+  cloud/
+    provider.py           — CloudProvider ABC, CloudProviderError, shared dataclasses
+    credentials.py        — CredentialStore (OS keyring wrapper)
+    dropbox_provider.py   — DropboxProvider implementation (PKCE OAuth, upload/download)
 docs/
   ERROR_CODES.md          — User-facing error code reference
 tests/
@@ -66,6 +70,10 @@ tests/
   test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests
   test_errors.py          — ErrorCode enum and app_error() helper tests
   test_dev_modals.py      — Development flow modal tests
+  test_cloud_settings.py  — cloud_settings DB CRUD tests (6 tests)
+  test_cloud_provider.py  — CloudProvider ABC and CredentialStore tests (11 tests)
+  test_dropbox_provider.py — DropboxProvider tests with mocked SDK (18 tests)
+  test_cloud_modals.py    — Cloud admin modal tests (15 tests)
 ```
 
 ## Roll Lifecycle

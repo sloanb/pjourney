@@ -314,6 +314,35 @@ Do this before making large changes or periodically as a precaution.
 
 Press **Vacuum Database** to optimise your database file. This reclaims space after deletions and keeps things tidy. It is safe to run at any time.
 
+### Cloud Sync (Dropbox)
+
+The Cloud Sync section lets you back up and restore your database to and from Dropbox.
+
+**Linking your account**
+
+Press **Link Account**. pjourney will open a Dropbox authorisation page in your browser. Sign in, authorise pjourney, then paste the code shown into the dialog.
+
+Once linked the status line shows your Dropbox account name and the last sync time.
+
+**Selecting a backup folder**
+
+Press **Select Folder** to browse your Dropbox and choose where backups are stored. You can also create a new folder from within the browser.
+
+**Uploading a backup**
+
+Press **Sync Now** to upload a timestamped copy of your database to the selected Dropbox folder:
+```
+<remote_folder>/pjourney_YYYYMMDD_HHMMSS.db
+```
+
+**Restoring from a backup**
+
+Press **Restore** to browse your cloud backups and download one to replace the local database. pjourney saves a local safety copy before overwriting, then verifies the downloaded file is a valid SQLite database. Restart the app after a restore to reconnect to the database.
+
+**Disconnecting**
+
+Press **Disconnect** to revoke pjourney's Dropbox access and remove stored credentials. Your cloud backups are not deleted.
+
 ### User Management
 
 - **Create User** — Add a new account. Each user has their own isolated inventory.
@@ -397,20 +426,20 @@ Deleting an issue requires clicking the **Delete Issue** button (no keyboard sho
 - **Use the status filter.** The Rolls screen filter buttons (Fresh, Loaded, Shooting, etc.) let you instantly find rolls at a particular stage without scrolling through your whole history.
 - **Camera issues are a maintenance diary.** Even if something is not broken, logging a quirk — like a sticky advance lever that clears up in the cold — helps you remember it later.
 - **Lens notes are freeform.** Use them for anything: optimal apertures, focus calibration offsets, filter notes, repair receipts, or shooting tips you discovered.
-- **Back up regularly.** The Admin screen makes it one button press. Do it before you delete anything significant.
+- **Back up regularly.** The Admin screen makes it one button press. Do it before you delete anything significant. Connect Dropbox for off-machine backups with **Sync Now**.
 - **Multiple users.** If you share the machine with another photographer, each person can have their own account with completely separate gear and roll history.
 
 ---
 
-## Data Stored Locally
+## Data Storage
 
-All data lives on your machine at:
+Your database lives on your machine at:
 
 ```
 ~/.pjourney/pjourney.db
 ```
 
-Nothing is sent to the internet. Backups are saved in the same directory.
+Local backups are saved in the same directory. If you connect a Dropbox account via the Admin screen, pjourney will also upload timestamped backup copies to the Dropbox folder you choose. No data is sent anywhere unless you explicitly press **Sync Now** or **Restore**.
 
 ---
 

@@ -25,7 +25,7 @@ python -m pytest tests/ -v
 
 ## Architecture
 
-- **Python 3.12+** with **Textual** for TUI, **SQLite** for storage, **argon2-cffi** for auth
+- **Python 3.12+** with **Textual** for TUI, **SQLite** for storage, **argon2-cffi** for auth, **dropbox** + **keyring** for cloud backup
 - Database stored at `~/.pjourney/pjourney.db`, auto-created on first run
 - Default user: `admin` / `pjourney`
 
@@ -34,9 +34,10 @@ python -m pytest tests/ -v
 - `pjourney/db/` — database.py (connection, schema, CRUD), models.py (dataclasses)
 - `pjourney/screens/` — login, dashboard, cameras, lenses, film_stock, rolls, frames, admin
 - `pjourney/widgets/` — reusable InventoryTable widget
-- `pjourney/errors.py` — ErrorCode enum (PJ-DB01…PJ-APP01) and app_error() toast helper
+- `pjourney/cloud/` — provider.py (CloudProvider ABC, dataclasses, CloudProviderError), credentials.py (CredentialStore wrapping keyring), dropbox_provider.py (DropboxProvider implementation)
+- `pjourney/errors.py` — ErrorCode enum (PJ-DB01…PJ-CLD05, PJ-APP01) and app_error() toast helper
 - `docs/` — ERROR_CODES.md (user-facing error code reference)
-- `tests/` — test_database.py (33 CRUD tests), test_models.py, test_errors.py, test_dev_modals.py, test_confirm_modal.py, test_camera_form_modal.py
+- `tests/` — test_database.py (33 CRUD tests), test_models.py, test_errors.py, test_dev_modals.py, test_confirm_modal.py, test_camera_form_modal.py, test_cloud_settings.py (6 tests), test_cloud_provider.py (11 tests), test_dropbox_provider.py (18 tests), test_cloud_modals.py (15 tests)
 
 ### Screen flow
 
