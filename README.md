@@ -40,6 +40,7 @@ python -m pytest tests/ -v
 ```
 pjourney/
   app.py                  — App entry point, screen registry, DB connection
+  errors.py               — ErrorCode enum and app_error() toast helper
   db/
     database.py           — Schema, migrations, all CRUD functions
     models.py             — Dataclasses (Camera, Lens, FilmStock, Roll, Frame, …)
@@ -56,11 +57,15 @@ pjourney/
     inventory_table.py    — Shared DataTable with vim-style navigation
     app_header.py         — Common screen header
     confirm_modal.py      — Reusable delete confirmation modal
+docs/
+  ERROR_CODES.md          — User-facing error code reference
 tests/
-  test_database.py        — CRUD and schema tests (38 tests)
+  test_database.py        — CRUD and schema tests (33 tests)
   test_models.py          — Dataclass default/value tests
   test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests
   test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests
+  test_errors.py          — ErrorCode enum and app_error() helper tests
+  test_dev_modals.py      — Development flow modal tests
 ```
 
 ## Roll Lifecycle

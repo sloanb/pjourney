@@ -263,7 +263,13 @@ When you have exposed all the frames and rewound the film, select the roll and p
 
 ### Step 6 — Send for Development
 
-When you drop the roll at the lab (or start developing yourself), press `s` again to advance to **Developing**. The sent-for-development date is recorded.
+When you are ready to develop the roll, press `s` to advance to **Developing**. pjourney asks how the roll will be developed:
+
+- **Self Develop** — opens a form to record the process type (B&W, C-41, E-6, etc.) and each development step (chemical, temperature, time, agitation).
+- **Send to Lab** — opens a form to record the lab name, contact details, and cost.
+- **Cancel** — returns to the Rolls screen without advancing the status.
+
+After completing the form and pressing **Save**, the status advances to **Developing** and the sent-for-development date is recorded. To review these details later, select the roll and press `i` (Dev Info).
 
 ---
 
@@ -357,6 +363,7 @@ Press **Vacuum Database** to optimise your database file. This reclaims space af
 | `l` | Load roll into camera |
 | `s` | Advance roll status |
 | `f` | View frames for this roll |
+| `i` | View development info |
 | `d` | Delete roll |
 
 ### Camera Issues

@@ -34,7 +34,9 @@ python -m pytest tests/ -v
 - `pjourney/db/` — database.py (connection, schema, CRUD), models.py (dataclasses)
 - `pjourney/screens/` — login, dashboard, cameras, lenses, film_stock, rolls, frames, admin
 - `pjourney/widgets/` — reusable InventoryTable widget
-- `tests/` — test_database.py (38 tests covering all CRUD), test_models.py
+- `pjourney/errors.py` — ErrorCode enum (PJ-DB01…PJ-APP01) and app_error() toast helper
+- `docs/` — ERROR_CODES.md (user-facing error code reference)
+- `tests/` — test_database.py (33 CRUD tests), test_models.py, test_errors.py, test_dev_modals.py, test_confirm_modal.py, test_camera_form_modal.py
 
 ### Screen flow
 
