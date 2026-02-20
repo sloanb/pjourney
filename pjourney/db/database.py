@@ -6,7 +6,7 @@ from pathlib import Path
 
 from argon2 import PasswordHasher
 
-from .models import Camera, CameraIssue, DevelopmentStep, FilmStock, Frame, Lens, LensNote, Roll, RollDevelopment, User
+from .models import Camera, CameraIssue, CloudSettings, DevelopmentStep, FilmStock, Frame, Lens, LensNote, Roll, RollDevelopment, User
 
 DB_PATH = Path.home() / ".pjourney" / "pjourney.db"
 
@@ -145,6 +145,19 @@ def init_db(conn: sqlite3.Connection) -> None:
             duration_seconds INTEGER,
             agitation TEXT NOT NULL DEFAULT '',
             notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS cloud_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+            provider TEXT NOT NULL DEFAULT '',
+            remote_folder TEXT NOT NULL DEFAULT '',
+            last_sync_at TEXT,
+            account_display_name TEXT NOT NULL DEFAULT '',
+            account_email TEXT NOT NULL DEFAULT '',
+            enabled BOOLEAN NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
     conn.commit()
@@ -592,6 +605,44 @@ def update_frame(conn: sqlite3.Connection, frame: Frame) -> Frame:
     )
     conn.commit()
     return get_frame(conn, frame.id)
+
+
+# --- Cloud Settings CRUD ---
+
+def get_cloud_settings(conn: sqlite3.Connection, user_id: int) -> CloudSettings | None:
+    row = conn.execute("SELECT * FROM cloud_settings WHERE user_id = ?", (user_id,)).fetchone()
+    return CloudSettings(**dict(row)) if row else None
+
+
+def save_cloud_settings(conn: sqlite3.Connection, settings: CloudSettings) -> CloudSettings:
+    now = datetime.now().isoformat()
+    if settings.id is None:
+        cur = conn.execute(
+            """INSERT INTO cloud_settings (user_id, provider, remote_folder, last_sync_at,
+               account_display_name, account_email, enabled, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (settings.user_id, settings.provider, settings.remote_folder,
+             settings.last_sync_at, settings.account_display_name,
+             settings.account_email, settings.enabled, now, now),
+        )
+        conn.commit()
+        return get_cloud_settings(conn, settings.user_id)
+    else:
+        conn.execute(
+            """UPDATE cloud_settings SET provider=?, remote_folder=?, last_sync_at=?,
+               account_display_name=?, account_email=?, enabled=?, updated_at=?
+               WHERE id=?""",
+            (settings.provider, settings.remote_folder, settings.last_sync_at,
+             settings.account_display_name, settings.account_email,
+             settings.enabled, now, settings.id),
+        )
+        conn.commit()
+        return get_cloud_settings(conn, settings.user_id)
+
+
+def delete_cloud_settings(conn: sqlite3.Connection, user_id: int) -> None:
+    conn.execute("DELETE FROM cloud_settings WHERE user_id = ?", (user_id,))
+    conn.commit()
 
 
 # --- Utility ---

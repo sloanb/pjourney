@@ -134,6 +134,20 @@ class RollDevelopment:
 
 
 @dataclass
+class CloudSettings:
+    id: int | None = None
+    user_id: int = 0
+    provider: str = ""
+    remote_folder: str = ""
+    last_sync_at: str | None = None
+    account_display_name: str = ""
+    account_email: str = ""
+    enabled: bool = False
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+@dataclass
 class DevelopmentStep:
     id: int | None = None
     development_id: int = 0

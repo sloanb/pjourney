@@ -13,4 +13,9 @@ Note the reference code and include it in any support request.
 | PJ-IO01  | Backup file could not be written       | Check available disk space                       |
 | PJ-VAL01 | A number field has invalid text        | Correct the field and try saving again           |
 | PJ-VAL02 | A date field has invalid text          | Enter the date as YYYY-MM-DD                     |
+| PJ-CLD01 | Cloud account authorisation failed      | Try linking your account again                   |
+| PJ-CLD02 | Database could not be uploaded          | Check your internet connection and try again     |
+| PJ-CLD03 | Database could not be downloaded        | Check your internet connection and try again     |
+| PJ-CLD04 | Could not list or create cloud folder   | Check your internet connection and try again     |
+| PJ-CLD05 | Could not connect to cloud storage      | Check your internet connection; re-link account  |
 | PJ-APP01 | Unexpected internal error              | Restart the app; report the code to support      |

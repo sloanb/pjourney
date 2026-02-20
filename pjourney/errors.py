@@ -13,6 +13,11 @@ class ErrorCode(str, Enum):
     IO_BACKUP      = "PJ-IO01"
     VAL_NUMBER     = "PJ-VAL01"
     VAL_DATE       = "PJ-VAL02"
+    CLOUD_AUTH     = "PJ-CLD01"
+    CLOUD_UPLOAD   = "PJ-CLD02"
+    CLOUD_DOWNLOAD = "PJ-CLD03"
+    CLOUD_FOLDER   = "PJ-CLD04"
+    CLOUD_CONNECT  = "PJ-CLD05"
     APP_UNEXPECTED = "PJ-APP01"
 
 
@@ -25,6 +30,11 @@ _MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.IO_BACKUP:      "The backup file could not be written. Check available disk space.",
     ErrorCode.VAL_NUMBER:     "Please enter a valid number in that field.",
     ErrorCode.VAL_DATE:       "Please enter a date in YYYY-MM-DD format.",
+    ErrorCode.CLOUD_AUTH:     "Cloud account authorisation failed.",
+    ErrorCode.CLOUD_UPLOAD:   "Database could not be uploaded.",
+    ErrorCode.CLOUD_DOWNLOAD: "Database could not be downloaded.",
+    ErrorCode.CLOUD_FOLDER:   "Could not list or create cloud folder.",
+    ErrorCode.CLOUD_CONNECT:  "Could not connect to cloud storage.",
     ErrorCode.APP_UNEXPECTED: "Something unexpected happened. No data was lost.",
 }
 
