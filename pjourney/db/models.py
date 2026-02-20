@@ -114,3 +114,32 @@ class Frame:
     date_taken: date | None = None
     location: str = ""
     notes: str = ""
+
+
+DEVELOPMENT_TYPES = ["self", "lab"]
+PROCESS_TYPES = ["C-41", "E-6", "B&W", "ECN-2", "Other"]
+
+
+@dataclass
+class RollDevelopment:
+    id: int | None = None
+    roll_id: int = 0
+    dev_type: str = "self"           # "self" or "lab"
+    process_type: str | None = None  # self only
+    lab_name: str | None = None      # lab only (required for lab)
+    lab_contact: str | None = None   # lab only
+    cost_amount: float | None = None # lab only
+    notes: str = ""
+    created_at: datetime | None = None
+
+
+@dataclass
+class DevelopmentStep:
+    id: int | None = None
+    development_id: int = 0
+    step_order: int = 0
+    chemical_name: str = ""
+    temperature: str = ""       # stored as text, e.g. "20°C", "68°F"
+    duration_seconds: int | None = None
+    agitation: str = ""
+    notes: str = ""

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from pjourney.db import database as db
-from pjourney.db.models import Camera, CameraIssue, FilmStock, Frame, Lens, Roll
+from pjourney.db.models import Camera, CameraIssue, DevelopmentStep, FilmStock, Frame, Lens, Roll, RollDevelopment
 
 
 @pytest.fixture
@@ -34,6 +34,8 @@ class TestSchema:
         assert "film_stocks" in names
         assert "rolls" in names
         assert "frames" in names
+        assert "roll_development" in names
+        assert "development_steps" in names
 
     def test_default_user_created(self, conn):
         users = db.get_users(conn)
@@ -215,6 +217,102 @@ class TestFrameCRUD:
         updated = db.update_frame(conn, frame)
         assert updated.subject == "Golden Gate Bridge"
         assert updated.aperture == "f/8"
+
+
+class TestDevelopmentCRUD:
+    def _make_roll(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5", frames_per_roll=36,
+        ))
+        return db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+
+    def test_save_self_development_with_steps(self, conn):
+        roll = self._make_roll(conn)
+        dev = RollDevelopment(roll_id=roll.id, dev_type="self", process_type="B&W")
+        steps = [
+            DevelopmentStep(chemical_name="Developer", temperature="20C", duration_seconds=480),
+            DevelopmentStep(chemical_name="Fixer", temperature="20C", duration_seconds=300),
+        ]
+        saved = db.save_roll_development(conn, dev, steps)
+        assert saved.id is not None
+        assert saved.dev_type == "self"
+        assert saved.process_type == "B&W"
+
+    def test_get_development_steps(self, conn):
+        roll = self._make_roll(conn)
+        dev = RollDevelopment(roll_id=roll.id, dev_type="self", process_type="B&W")
+        steps = [
+            DevelopmentStep(chemical_name="Developer", temperature="20C", duration_seconds=480),
+            DevelopmentStep(chemical_name="Fixer", temperature="20C", duration_seconds=300),
+        ]
+        saved = db.save_roll_development(conn, dev, steps)
+        fetched_steps = db.get_development_steps(conn, saved.id)
+        assert len(fetched_steps) == 2
+        assert fetched_steps[0].chemical_name == "Developer"
+        assert fetched_steps[0].step_order == 0
+        assert fetched_steps[1].chemical_name == "Fixer"
+        assert fetched_steps[1].step_order == 1
+
+    def test_save_lab_development(self, conn):
+        roll = self._make_roll(conn)
+        dev = RollDevelopment(roll_id=roll.id, dev_type="lab", lab_name="DwayneLab", cost_amount=12.50)
+        saved = db.save_roll_development(conn, dev, [])
+        assert saved.lab_name == "DwayneLab"
+        assert saved.cost_amount == 12.50
+
+    def test_get_development_by_roll(self, conn):
+        roll = self._make_roll(conn)
+        dev = RollDevelopment(roll_id=roll.id, dev_type="lab", lab_name="TestLab")
+        db.save_roll_development(conn, dev, [])
+        found = db.get_roll_development_by_roll(conn, roll.id)
+        assert found is not None
+        assert found.lab_name == "TestLab"
+
+    def test_get_development_by_roll_returns_none_when_absent(self, conn):
+        roll = self._make_roll(conn)
+        result = db.get_roll_development_by_roll(conn, roll.id)
+        assert result is None
+
+    def test_delete_development_cascades_steps(self, conn):
+        roll = self._make_roll(conn)
+        dev = RollDevelopment(roll_id=roll.id, dev_type="self", process_type="B&W")
+        steps = [DevelopmentStep(chemical_name="Developer", temperature="20C")]
+        saved = db.save_roll_development(conn, dev, steps)
+        db.delete_roll_development(conn, roll.id)
+        assert db.get_roll_development_by_roll(conn, roll.id) is None
+        assert db.get_development_steps(conn, saved.id) == []
+
+    def test_roll_delete_cascades_development(self, conn):
+        roll = self._make_roll(conn)
+        dev = RollDevelopment(roll_id=roll.id, dev_type="lab", lab_name="Lab")
+        saved = db.save_roll_development(conn, dev, [])
+        dev_id = saved.id
+        db.delete_roll(conn, roll.id)
+        assert db.get_roll_development(conn, dev_id) is None
+
+    def test_one_development_per_roll_enforced(self, conn):
+        import sqlite3 as sqlite3_module
+        roll = self._make_roll(conn)
+        dev1 = RollDevelopment(roll_id=roll.id, dev_type="lab", lab_name="Lab1")
+        db.save_roll_development(conn, dev1, [])
+        dev2 = RollDevelopment(roll_id=roll.id, dev_type="lab", lab_name="Lab2")
+        with pytest.raises(sqlite3_module.IntegrityError):
+            db.save_roll_development(conn, dev2, [])
+
+    def test_step_order_preserved(self, conn):
+        roll = self._make_roll(conn)
+        dev = RollDevelopment(roll_id=roll.id, dev_type="self", process_type="C-41")
+        steps = [
+            DevelopmentStep(chemical_name="Developer", temperature="38C", duration_seconds=210),
+            DevelopmentStep(chemical_name="Bleach", temperature="38C", duration_seconds=390),
+            DevelopmentStep(chemical_name="Fixer", temperature="38C", duration_seconds=240),
+        ]
+        saved = db.save_roll_development(conn, dev, steps)
+        fetched = db.get_development_steps(conn, saved.id)
+        assert fetched[0].chemical_name == "Developer"
+        assert fetched[1].chemical_name == "Bleach"
+        assert fetched[2].chemical_name == "Fixer"
 
 
 class TestUtility:

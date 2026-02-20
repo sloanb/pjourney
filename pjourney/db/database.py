@@ -6,7 +6,7 @@ from pathlib import Path
 
 from argon2 import PasswordHasher
 
-from .models import Camera, CameraIssue, FilmStock, Frame, Lens, LensNote, Roll, User
+from .models import Camera, CameraIssue, DevelopmentStep, FilmStock, Frame, Lens, LensNote, Roll, RollDevelopment, User
 
 DB_PATH = Path.home() / ".pjourney" / "pjourney.db"
 
@@ -121,6 +121,29 @@ def init_db(conn: sqlite3.Connection) -> None:
             lens_id INTEGER REFERENCES lenses(id),
             date_taken DATE,
             location TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS roll_development (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            roll_id INTEGER NOT NULL UNIQUE REFERENCES rolls(id) ON DELETE CASCADE,
+            dev_type TEXT NOT NULL DEFAULT 'self',
+            process_type TEXT,
+            lab_name TEXT,
+            lab_contact TEXT,
+            cost_amount REAL,
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS development_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            development_id INTEGER NOT NULL REFERENCES roll_development(id) ON DELETE CASCADE,
+            step_order INTEGER NOT NULL DEFAULT 0,
+            chemical_name TEXT NOT NULL DEFAULT '',
+            temperature TEXT NOT NULL DEFAULT '',
+            duration_seconds INTEGER,
+            agitation TEXT NOT NULL DEFAULT '',
             notes TEXT NOT NULL DEFAULT ''
         );
     """)
@@ -485,6 +508,63 @@ def set_roll_frames_lens(conn: sqlite3.Connection, roll_id: int, lens_id: int | 
 def delete_roll(conn: sqlite3.Connection, roll_id: int) -> None:
     conn.execute("DELETE FROM frames WHERE roll_id = ?", (roll_id,))
     conn.execute("DELETE FROM rolls WHERE id = ?", (roll_id,))
+    conn.commit()
+
+
+# --- Roll Development CRUD ---
+
+def save_roll_development(conn: sqlite3.Connection, dev: RollDevelopment, steps: list[DevelopmentStep]) -> RollDevelopment:
+    """Insert or replace development record and its steps atomically."""
+    if dev.id is None:
+        cur = conn.execute(
+            """INSERT INTO roll_development (roll_id, dev_type, process_type, lab_name,
+               lab_contact, cost_amount, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (dev.roll_id, dev.dev_type, dev.process_type, dev.lab_name,
+             dev.lab_contact, dev.cost_amount, dev.notes),
+        )
+        dev_id = cur.lastrowid
+    else:
+        conn.execute(
+            """UPDATE roll_development SET dev_type=?, process_type=?, lab_name=?,
+               lab_contact=?, cost_amount=?, notes=? WHERE id=?""",
+            (dev.dev_type, dev.process_type, dev.lab_name, dev.lab_contact,
+             dev.cost_amount, dev.notes, dev.id),
+        )
+        dev_id = dev.id
+        conn.execute("DELETE FROM development_steps WHERE development_id = ?", (dev_id,))
+    for i, step in enumerate(steps):
+        conn.execute(
+            """INSERT INTO development_steps (development_id, step_order, chemical_name,
+               temperature, duration_seconds, agitation, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (dev_id, i, step.chemical_name, step.temperature,
+             step.duration_seconds, step.agitation, step.notes),
+        )
+    conn.commit()
+    return get_roll_development(conn, dev_id)
+
+
+def get_roll_development(conn: sqlite3.Connection, dev_id: int) -> RollDevelopment | None:
+    row = conn.execute("SELECT * FROM roll_development WHERE id = ?", (dev_id,)).fetchone()
+    return RollDevelopment(**dict(row)) if row else None
+
+
+def get_roll_development_by_roll(conn: sqlite3.Connection, roll_id: int) -> RollDevelopment | None:
+    row = conn.execute("SELECT * FROM roll_development WHERE roll_id = ?", (roll_id,)).fetchone()
+    return RollDevelopment(**dict(row)) if row else None
+
+
+def get_development_steps(conn: sqlite3.Connection, development_id: int) -> list[DevelopmentStep]:
+    rows = conn.execute(
+        "SELECT * FROM development_steps WHERE development_id = ? ORDER BY step_order",
+        (development_id,),
+    ).fetchall()
+    return [DevelopmentStep(**dict(r)) for r in rows]
+
+
+def delete_roll_development(conn: sqlite3.Connection, roll_id: int) -> None:
+    conn.execute("DELETE FROM roll_development WHERE roll_id = ?", (roll_id,))
     conn.commit()
 
 
