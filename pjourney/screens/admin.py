@@ -348,14 +348,14 @@ class AdminScreen(Screen):
     }
     #admin-sections {
         height: 1fr;
-        padding: 1 2;
+        padding: 0 2;
         overflow-y: auto;
     }
     #db-section {
         height: auto;
         border: solid $accent;
-        padding: 1 2;
-        margin: 0 0 1 0;
+        padding: 0 1;
+        margin: 0;
     }
     #db-section Button {
         margin: 0 1;
@@ -363,11 +363,11 @@ class AdminScreen(Screen):
     #cloud-section {
         height: auto;
         border: solid $accent;
-        padding: 1 2;
-        margin: 0 0 1 0;
+        padding: 0 1;
+        margin: 0;
     }
     #cloud-status-label {
-        margin: 1 0;
+        margin: 0;
     }
     #cloud-actions Button {
         margin: 0 1;
@@ -378,21 +378,21 @@ class AdminScreen(Screen):
     #user-section {
         height: 1fr;
         border: solid $accent;
-        padding: 1 2;
+        padding: 0 1;
     }
     #user-actions {
         height: auto;
-        margin: 1 0 0 0;
+        margin: 0;
     }
     #user-actions Button {
         margin: 0 1;
     }
     #status-label {
-        margin: 1 0;
+        margin: 0;
         color: $success;
     }
     #admin-back {
-        height: auto;
+        height: 3;
         padding: 0 2;
         dock: bottom;
     }
