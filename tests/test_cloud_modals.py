@@ -69,6 +69,27 @@ class TestCloudAuthModal:
             await pilot.pause()
             assert app.dismissed_value is None
 
+    async def test_cancel_button_not_clipped(self):
+        """Cancel button must be fully visible on an 80x24 terminal."""
+        app = SimpleModalTestApp()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await app.push_screen(CloudAuthModal())
+            await pilot.pause()
+            cancel = app.screen.query_one("#cancel-btn", Button)
+            cancel_bottom = cancel.region.y + cancel.region.height
+            assert cancel_bottom <= 24
+
+    async def test_instruction_label_wraps(self):
+        """Long instruction label must wrap within the auth-box width."""
+        app = SimpleModalTestApp()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await app.push_screen(CloudAuthModal())
+            await pilot.pause()
+            box = app.screen.query_one("#auth-box")
+            labels = app.screen.query("Label")
+            instruction_label = labels[0]
+            assert instruction_label.size.width <= box.size.width
+
 
 # ---------------------------------------------------------------------------
 # NewFolderModal tests
