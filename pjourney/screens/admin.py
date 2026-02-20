@@ -219,48 +219,52 @@ class CloudFolderBrowserModal(ModalScreen[str | None]):
                 yield Button("Select", id="select-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         table = self.query_one("#folder-table", InventoryTable)
         table.add_columns("Name", "Path")
-        self._load_folder("")
+        await self._load_folder("")
 
-    def _load_folder(self, path: str) -> None:
+    async def _load_folder(self, path: str) -> None:
         self._current_path = path
         display_path = path or "/"
         self.query_one("#path-label", Label).update(display_path)
         table = self.query_one("#folder-table", InventoryTable)
         table.clear()
         try:
-            folders = self._provider.list_folder(path)
+            folders = await asyncio.to_thread(self._provider.list_folder, path)
             for f in folders:
                 table.add_row(f.name, f.path, key=f.path)
-        except CloudProviderError:
-            pass
+        except CloudProviderError as exc:
+            self.query_one("#path-label", Label).update(f"{display_path}  (error: {exc})")
 
     @on(Button.Pressed, "#open-btn")
-    def open_folder(self) -> None:
+    async def open_folder(self) -> None:
         table = self.query_one("#folder-table", InventoryTable)
         if table.cursor_row is not None and table.row_count > 0:
             row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
-            self._load_folder(row_key.value)
+            await self._load_folder(row_key.value)
 
     @on(Button.Pressed, "#up-btn")
-    def go_up(self) -> None:
+    async def go_up(self) -> None:
         if self._current_path:
             parent = "/".join(self._current_path.rstrip("/").split("/")[:-1])
-            self._load_folder(parent)
+            await self._load_folder(parent)
 
     @on(Button.Pressed, "#new-folder-btn")
     def new_folder(self) -> None:
         def on_result(name: str | None) -> None:
             if name:
                 new_path = f"{self._current_path}/{name}" if self._current_path else f"/{name}"
-                try:
-                    self._provider.create_folder(new_path)
-                    self._load_folder(self._current_path)
-                except CloudProviderError:
-                    pass
+                self.run_worker(self._create_and_refresh(new_path))
         self.app.push_screen(NewFolderModal(), on_result)
+
+    async def _create_and_refresh(self, new_path: str) -> None:
+        try:
+            await asyncio.to_thread(self._provider.create_folder, new_path)
+        except CloudProviderError as exc:
+            self.query_one("#path-label", Label).update(f"Error creating folder: {exc}")
+            return
+        await self._load_folder(self._current_path)
 
     @on(Button.Pressed, "#select-btn")
     def select_folder(self) -> None:
