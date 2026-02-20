@@ -85,6 +85,8 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
                 )
                 yield Label("Frames Per Roll")
                 yield Input(value=str(s.frames_per_roll), id="frames_per_roll")
+                yield Label("Quantity On Hand")
+                yield Input(value=str(s.quantity_on_hand), id="quantity_on_hand")
             yield Label("Notes")
             yield Input(value=s.notes, id="notes")
             with Horizontal(classes="form-buttons"):
@@ -112,15 +114,18 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
             s.iso = 0
             s.format = ""
             s.frames_per_roll = 0
+            s.quantity_on_hand = 0
         else:
             s.type = self.query_one("#type", Select).value
             iso_str = self.query_one("#iso", Input).value.strip()
             fpr = self.query_one("#frames_per_roll", Input).value.strip()
+            qty_str = self.query_one("#quantity_on_hand", Input).value.strip()
             try:
                 s.iso = int(iso_str) if iso_str else 400
                 s.frames_per_roll = int(fpr) if fpr else 36
+                s.quantity_on_hand = int(qty_str) if qty_str else 0
             except ValueError:
-                app_error(self, ErrorCode.VAL_NUMBER, detail="ISO and Frames must be whole numbers.")
+                app_error(self, ErrorCode.VAL_NUMBER, detail="ISO, Frames, and Quantity must be whole numbers.")
                 return
             s.format = self.query_one("#format", Select).value
         s.notes = self.query_one("#notes", Input).value.strip()
@@ -166,7 +171,7 @@ class FilmStockScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#stock-table", InventoryTable)
-        table.add_columns("ID", "Brand", "Name", "Media", "Type", "ISO", "Format", "Frames")
+        table.add_columns("ID", "Brand", "Name", "Media", "Type", "ISO", "Format", "Frames", "Qty")
         self._refresh()
 
     def on_screen_resume(self) -> None:
@@ -184,15 +189,17 @@ class FilmStockScreen(Screen):
                     iso_display = "—"
                     format_display = "—"
                     frames_display = "—"
+                    qty_display = "—"
                 else:
                     media_display = "Analog"
                     type_display = "Color" if s.type == "color" else "B&W"
                     iso_display = str(s.iso)
                     format_display = s.format
                     frames_display = str(s.frames_per_roll)
+                    qty_display = str(s.quantity_on_hand)
                 table.add_row(
                     str(s.id), s.brand, s.name, media_display, type_display,
-                    iso_display, format_display, frames_display,
+                    iso_display, format_display, frames_display, qty_display,
                     key=str(s.id),
                 )
         except Exception:

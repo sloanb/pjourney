@@ -89,6 +89,7 @@ class TestFilmStockModel:
         assert stock.iso == 400
         assert stock.format == "35mm"
         assert stock.frames_per_roll == 36
+        assert stock.quantity_on_hand == 0
 
     def test_bw_stock(self):
         stock = FilmStock(

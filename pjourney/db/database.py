@@ -189,6 +189,12 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    try:
+        conn.execute("ALTER TABLE film_stocks ADD COLUMN quantity_on_hand INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
 
 def _ensure_default_user(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
@@ -432,19 +438,20 @@ def save_film_stock(conn: sqlite3.Connection, stock: FilmStock) -> FilmStock:
     if stock.id is None:
         cur = conn.execute(
             """INSERT INTO film_stocks (user_id, brand, name, type, media_type, iso, format,
-               frames_per_roll, notes, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               frames_per_roll, quantity_on_hand, notes, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (stock.user_id, stock.brand, stock.name, stock.type, stock.media_type,
-             stock.iso, stock.format, stock.frames_per_roll, stock.notes, now),
+             stock.iso, stock.format, stock.frames_per_roll, stock.quantity_on_hand,
+             stock.notes, now),
         )
         conn.commit()
         return get_film_stock(conn, cur.lastrowid)
     else:
         conn.execute(
             """UPDATE film_stocks SET brand=?, name=?, type=?, media_type=?, iso=?, format=?,
-               frames_per_roll=?, notes=? WHERE id=?""",
+               frames_per_roll=?, quantity_on_hand=?, notes=? WHERE id=?""",
             (stock.brand, stock.name, stock.type, stock.media_type, stock.iso, stock.format,
-             stock.frames_per_roll, stock.notes, stock.id),
+             stock.frames_per_roll, stock.quantity_on_hand, stock.notes, stock.id),
         )
         conn.commit()
         return get_film_stock(conn, stock.id)
@@ -495,6 +502,10 @@ def create_roll(conn: sqlite3.Connection, roll: Roll, frames_per_roll: int) -> R
                 "INSERT INTO frames (roll_id, frame_number, lens_id) VALUES (?, ?, ?)",
                 (roll_id, i, roll.lens_id),
             )
+    conn.execute(
+        "UPDATE film_stocks SET quantity_on_hand = MAX(quantity_on_hand - 1, 0) WHERE id = ?",
+        (roll.film_stock_id,),
+    )
     conn.commit()
     return get_roll(conn, roll_id)
 

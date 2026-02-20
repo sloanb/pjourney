@@ -79,6 +79,7 @@ class FilmStock:
     iso: int = 400
     format: str = "35mm"
     frames_per_roll: int = 36
+    quantity_on_hand: int = 0
     notes: str = ""
     created_at: datetime | None = None
 

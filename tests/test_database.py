@@ -382,6 +382,28 @@ class TestDigitalRollCreation:
         assert len(frames) == 0
 
 
+class TestRollDecrementsQuantity:
+    def test_create_roll_decrements_quantity(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400",
+            frames_per_roll=36, quantity_on_hand=5,
+        ))
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        updated = db.get_film_stock(conn, stock.id)
+        assert updated.quantity_on_hand == 4
+
+    def test_quantity_never_goes_below_zero(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5",
+            frames_per_roll=36, quantity_on_hand=0,
+        ))
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        updated = db.get_film_stock(conn, stock.id)
+        assert updated.quantity_on_hand == 0
+
+
 class TestSaveRollDevelopmentUpdate:
     def _make_roll(self, conn):
         user = db.get_users(conn)[0]
@@ -825,6 +847,16 @@ class TestFilmStockListAndUpdate:
         updated = db.save_film_stock(conn, stock)
         assert updated.name == "Gold 400"
         assert updated.iso == 400
+
+    def test_quantity_on_hand_persists(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(
+            conn,
+            FilmStock(user_id=user.id, brand="Kodak", name="Portra 800", quantity_on_hand=10),
+        )
+        assert stock.quantity_on_hand == 10
+        loaded = db.get_film_stock(conn, stock.id)
+        assert loaded.quantity_on_hand == 10
 
 
 # ---------------------------------------------------------------------------
