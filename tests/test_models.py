@@ -3,13 +3,18 @@
 from datetime import date, datetime
 
 from pjourney.db.models import (
+    DEVELOPMENT_TYPES,
+    PROCESS_TYPES,
     ROLL_STATUSES,
     Camera,
     CameraIssue,
+    CloudSettings,
+    DevelopmentStep,
     FilmStock,
     Frame,
     Lens,
     Roll,
+    RollDevelopment,
     User,
 )
 
@@ -125,3 +130,87 @@ class TestFrameModel:
         )
         assert frame.subject == "Portrait"
         assert frame.aperture == "f/2.8"
+
+
+class TestRollDevelopmentModel:
+    def test_defaults(self):
+        dev = RollDevelopment()
+        assert dev.id is None
+        assert dev.roll_id == 0
+        assert dev.dev_type == "self"
+        assert dev.process_type is None
+        assert dev.lab_name is None
+        assert dev.lab_contact is None
+        assert dev.cost_amount is None
+        assert dev.notes == ""
+        assert dev.created_at is None
+
+    def test_lab_development(self):
+        dev = RollDevelopment(
+            roll_id=2, dev_type="lab", lab_name="DwayneLab",
+            lab_contact="info@dwayne.com", cost_amount=12.50,
+        )
+        assert dev.dev_type == "lab"
+        assert dev.lab_name == "DwayneLab"
+        assert dev.cost_amount == 12.50
+
+    def test_development_types_constant(self):
+        assert "self" in DEVELOPMENT_TYPES
+        assert "lab" in DEVELOPMENT_TYPES
+        assert len(DEVELOPMENT_TYPES) == 2
+
+    def test_process_types_constant(self):
+        assert "C-41" in PROCESS_TYPES
+        assert "E-6" in PROCESS_TYPES
+        assert "B&W" in PROCESS_TYPES
+        assert "ECN-2" in PROCESS_TYPES
+        assert "Other" in PROCESS_TYPES
+
+
+class TestDevelopmentStepModel:
+    def test_defaults(self):
+        step = DevelopmentStep()
+        assert step.id is None
+        assert step.development_id == 0
+        assert step.step_order == 0
+        assert step.chemical_name == ""
+        assert step.temperature == ""
+        assert step.duration_seconds is None
+        assert step.agitation == ""
+        assert step.notes == ""
+
+    def test_with_values(self):
+        step = DevelopmentStep(
+            development_id=1, step_order=0,
+            chemical_name="Kodak D-76", temperature="20C",
+            duration_seconds=480, agitation="30s initial, 5s/min",
+        )
+        assert step.chemical_name == "Kodak D-76"
+        assert step.duration_seconds == 480
+
+
+class TestCloudSettingsModel:
+    def test_defaults(self):
+        settings = CloudSettings()
+        assert settings.id is None
+        assert settings.user_id == 0
+        assert settings.provider == ""
+        assert settings.remote_folder == ""
+        assert settings.last_sync_at is None
+        assert settings.account_display_name == ""
+        assert settings.account_email == ""
+        assert settings.enabled is False
+        assert settings.created_at is None
+        assert settings.updated_at is None
+
+    def test_with_values(self):
+        settings = CloudSettings(
+            user_id=1, provider="Dropbox",
+            remote_folder="/pjourney-backups",
+            account_display_name="Jane Doe",
+            account_email="jane@example.com",
+            enabled=True,
+        )
+        assert settings.provider == "Dropbox"
+        assert settings.remote_folder == "/pjourney-backups"
+        assert settings.enabled is True

@@ -257,3 +257,64 @@ class TestSDKExceptionWrapping:
         provider = DropboxProvider(authed_creds)
         with pytest.raises(CloudProviderError, match="Failed to list folder"):
             provider.list_folder("")
+
+
+class TestGetAuthUrlException:
+    @patch("pjourney.cloud.dropbox_provider.DropboxOAuth2FlowNoRedirect")
+    def test_get_auth_url_wraps_exception(self, mock_flow_cls, mock_creds):
+        mock_flow_cls.side_effect = Exception("SDK init error")
+        provider = DropboxProvider(mock_creds)
+        with pytest.raises(CloudProviderError, match="Failed to start auth flow"):
+            provider.get_auth_url()
+
+
+class TestListFilesException:
+    @patch("pjourney.cloud.dropbox_provider.dropbox.Dropbox")
+    def test_list_files_wraps_sdk_exception(self, mock_dbx_cls, authed_creds):
+        mock_client = MagicMock()
+        mock_client.files_list_folder.side_effect = Exception("timeout")
+        mock_dbx_cls.return_value = mock_client
+
+        provider = DropboxProvider(authed_creds)
+        with pytest.raises(CloudProviderError, match="Failed to list files"):
+            provider.list_files("/backups")
+
+
+class TestCreateFolderException:
+    @patch("pjourney.cloud.dropbox_provider.dropbox.Dropbox")
+    def test_create_folder_wraps_sdk_exception(self, mock_dbx_cls, authed_creds):
+        mock_client = MagicMock()
+        mock_client.files_create_folder_v2.side_effect = Exception("permission denied")
+        mock_dbx_cls.return_value = mock_client
+
+        provider = DropboxProvider(authed_creds)
+        with pytest.raises(CloudProviderError, match="Failed to create folder"):
+            provider.create_folder("/restricted")
+
+
+class TestDownloadFileUnauthenticated:
+    def test_download_file_raises_when_not_authenticated(self, mock_creds):
+        provider = DropboxProvider(mock_creds)
+        with pytest.raises(CloudProviderError, match="Not authenticated"):
+            provider.download_file("/backups/test.db", "/tmp/test.db")
+
+
+class TestDisconnectWithRevokeFailure:
+    @patch("pjourney.cloud.dropbox_provider.dropbox.Dropbox")
+    def test_disconnect_continues_after_revoke_exception(self, mock_dbx_cls, authed_creds):
+        mock_client = MagicMock()
+        mock_client.auth_token_revoke.side_effect = Exception("network error")
+        mock_dbx_cls.return_value = mock_client
+
+        provider = DropboxProvider(authed_creds)
+        provider.disconnect()
+        authed_creds.delete_all.assert_called_once_with(PROVIDER_NAME)
+
+
+class TestCredentialStoreDeleteAllUnknownProvider:
+    @patch("pjourney.cloud.credentials.keyring")
+    def test_delete_all_unknown_provider_is_noop(self, mock_keyring):
+        from pjourney.cloud.credentials import CredentialStore
+        store = CredentialStore()
+        store.delete_all("unknown_provider")
+        mock_keyring.delete_password.assert_not_called()

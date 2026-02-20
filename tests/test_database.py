@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from pjourney.db import database as db
-from pjourney.db.models import Camera, CameraIssue, DevelopmentStep, FilmStock, Frame, Lens, Roll, RollDevelopment
+from pjourney.db.models import Camera, CameraIssue, CloudSettings, DevelopmentStep, FilmStock, Frame, Lens, Roll, RollDevelopment
 
 
 @pytest.fixture
@@ -341,3 +341,128 @@ class TestUtility:
 
     def test_vacuum(self, conn):
         db.vacuum_db(conn)
+
+
+class TestSetRollFramesLens:
+    def _make_roll_with_lens(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=4,
+        ))
+        lens = db.save_lens(conn, Lens(user_id=user.id, name="50mm", make="Nikon"))
+        roll = db.create_roll(
+            conn, Roll(user_id=user.id, film_stock_id=stock.id), 4
+        )
+        return roll, lens
+
+    def test_set_lens_on_all_frames(self, conn):
+        roll, lens = self._make_roll_with_lens(conn)
+        db.set_roll_frames_lens(conn, roll.id, lens.id)
+        frames = db.get_frames(conn, roll.id)
+        assert all(f.lens_id == lens.id for f in frames)
+
+    def test_clear_lens_from_all_frames(self, conn):
+        roll, lens = self._make_roll_with_lens(conn)
+        db.set_roll_frames_lens(conn, roll.id, lens.id)
+        db.set_roll_frames_lens(conn, roll.id, None)
+        frames = db.get_frames(conn, roll.id)
+        assert all(f.lens_id is None for f in frames)
+
+
+class TestDigitalRollCreation:
+    def test_create_digital_roll_no_frames_prepopulated(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Digital", name="Memory Card",
+            frames_per_roll=0,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 0)
+        assert roll.id is not None
+        frames = db.get_frames(conn, roll.id)
+        assert len(frames) == 0
+
+
+class TestSaveRollDevelopmentUpdate:
+    def _make_roll(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5", frames_per_roll=36,
+        ))
+        return db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+
+    def test_update_development_replaces_steps(self, conn):
+        roll = self._make_roll(conn)
+        dev = RollDevelopment(roll_id=roll.id, dev_type="self", process_type="B&W")
+        steps_v1 = [
+            DevelopmentStep(chemical_name="Developer", temperature="20C", duration_seconds=480),
+        ]
+        saved = db.save_roll_development(conn, dev, steps_v1)
+        saved.process_type = "C-41"
+        steps_v2 = [
+            DevelopmentStep(chemical_name="Color Developer", temperature="38C", duration_seconds=210),
+            DevelopmentStep(chemical_name="Bleach", temperature="38C", duration_seconds=390),
+        ]
+        updated = db.save_roll_development(conn, saved, steps_v2)
+        assert updated.process_type == "C-41"
+        fetched_steps = db.get_development_steps(conn, updated.id)
+        assert len(fetched_steps) == 2
+        assert fetched_steps[0].chemical_name == "Color Developer"
+        assert fetched_steps[1].chemical_name == "Bleach"
+
+    def test_update_development_can_clear_steps(self, conn):
+        roll = self._make_roll(conn)
+        dev = RollDevelopment(roll_id=roll.id, dev_type="self", process_type="B&W")
+        steps = [DevelopmentStep(chemical_name="Developer", temperature="20C")]
+        saved = db.save_roll_development(conn, dev, steps)
+        saved.notes = "No steps needed"
+        updated = db.save_roll_development(conn, saved, [])
+        fetched_steps = db.get_development_steps(conn, updated.id)
+        assert len(fetched_steps) == 0
+
+
+class TestGetUsageStatsPopulated:
+    def test_returns_most_used_film_stock(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        for _ in range(3):
+            db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        stats = db.get_usage_stats(conn, user.id)
+        assert stats["film_stock"] == "Kodak Portra 400"
+
+    def test_returns_most_used_camera(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        camera = db.save_camera(conn, Camera(user_id=user.id, name="FM2", make="Nikon"))
+        for _ in range(2):
+            roll = db.create_roll(
+                conn, Roll(user_id=user.id, film_stock_id=stock.id), 36
+            )
+            roll.camera_id = camera.id
+            db.update_roll(conn, roll)
+        stats = db.get_usage_stats(conn, user.id)
+        assert stats["camera"] == "FM2"
+
+    def test_returns_most_used_lens(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=4,
+        ))
+        lens = db.save_lens(conn, Lens(user_id=user.id, name="50mm f/1.4", make="Nikon"))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 4)
+        frames = db.get_frames(conn, roll.id)
+        for frame in frames:
+            frame.lens_id = lens.id
+            db.update_frame(conn, frame)
+        stats = db.get_usage_stats(conn, user.id)
+        assert stats["lens"] == "50mm f/1.4"
+
+    def test_returns_none_when_no_data(self, conn):
+        user = db.get_users(conn)[0]
+        stats = db.get_usage_stats(conn, user.id)
+        assert stats["film_stock"] is None
+        assert stats["camera"] is None
+        assert stats["lens"] is None

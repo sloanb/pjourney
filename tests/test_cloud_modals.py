@@ -206,3 +206,66 @@ class TestCloudRestoreModal:
             app.screen.query_one("#cancel-btn", Button).press()
             await pilot.pause()
             assert app.dismissed_value is None
+
+
+# ---------------------------------------------------------------------------
+# CreateUserModal tests
+# ---------------------------------------------------------------------------
+
+class TestCreateUserModal:
+    async def test_opens_without_crash(self):
+        from pjourney.screens.admin import CreateUserModal
+        app = SimpleModalTestApp()
+        async with app.run_test() as pilot:
+            await app.push_screen(CreateUserModal())
+            assert len(app.screen_stack) == 2
+
+    async def test_create_with_username_and_password_dismisses_tuple(self):
+        from pjourney.screens.admin import CreateUserModal
+        app = SimpleModalTestApp()
+        async with app.run_test() as pilot:
+            def on_dismiss(val):
+                app.dismissed_value = val
+            await app.push_screen(CreateUserModal(), on_dismiss)
+            app.screen.query_one("#username", Input).value = "newuser"
+            app.screen.query_one("#password", Input).value = "secret"
+            app.screen.query_one("#save-btn", Button).press()
+            await pilot.pause()
+            assert app.dismissed_value == ("newuser", "secret")
+
+    async def test_create_with_empty_username_does_not_dismiss(self):
+        from pjourney.screens.admin import CreateUserModal
+        app = SimpleModalTestApp()
+        async with app.run_test() as pilot:
+            def on_dismiss(val):
+                app.dismissed_value = val
+            await app.push_screen(CreateUserModal(), on_dismiss)
+            app.screen.query_one("#password", Input).value = "secret"
+            app.screen.query_one("#save-btn", Button).press()
+            await pilot.pause()
+            assert len(app.screen_stack) == 2
+            assert app.dismissed_value == "UNSET"
+
+    async def test_create_with_empty_password_does_not_dismiss(self):
+        from pjourney.screens.admin import CreateUserModal
+        app = SimpleModalTestApp()
+        async with app.run_test() as pilot:
+            def on_dismiss(val):
+                app.dismissed_value = val
+            await app.push_screen(CreateUserModal(), on_dismiss)
+            app.screen.query_one("#username", Input).value = "newuser"
+            app.screen.query_one("#save-btn", Button).press()
+            await pilot.pause()
+            assert len(app.screen_stack) == 2
+            assert app.dismissed_value == "UNSET"
+
+    async def test_cancel_dismisses_none(self):
+        from pjourney.screens.admin import CreateUserModal
+        app = SimpleModalTestApp()
+        async with app.run_test() as pilot:
+            def on_dismiss(val):
+                app.dismissed_value = val
+            await app.push_screen(CreateUserModal(), on_dismiss)
+            app.screen.query_one("#cancel-btn", Button).press()
+            await pilot.pause()
+            assert app.dismissed_value is None
