@@ -13,6 +13,7 @@ from textual.widgets import Button, Footer, Input, Label, Static
 from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
+from pjourney.errors import ErrorCode, app_error
 from pjourney.widgets.inventory_table import InventoryTable
 
 
@@ -133,14 +134,17 @@ class AdminScreen(Screen):
         self._refresh_users()
 
     def _refresh_users(self) -> None:
-        table = self.query_one("#user-table", InventoryTable)
-        table.clear()
-        users = db.get_users(self.app.db_conn)
-        for u in users:
-            table.add_row(
-                str(u.id), u.username, str(u.created_at or ""),
-                key=str(u.id),
-            )
+        try:
+            table = self.query_one("#user-table", InventoryTable)
+            table.clear()
+            users = db.get_users(self.app.db_conn)
+            for u in users:
+                table.add_row(
+                    str(u.id), u.username, str(u.created_at or ""),
+                    key=str(u.id),
+                )
+        except Exception:
+            app_error(self, ErrorCode.DB_LOAD)
 
     def _set_status(self, msg: str) -> None:
         self.query_one("#status-label", Label).update(msg)
@@ -151,15 +155,21 @@ class AdminScreen(Screen):
         if not src.exists():
             self._set_status("No database file found")
             return
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        dest = src.parent / f"pjourney_backup_{timestamp}.db"
-        shutil.copy2(str(src), str(dest))
-        self._set_status(f"Backup saved: {dest.name}")
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dest = src.parent / f"pjourney_backup_{timestamp}.db"
+            shutil.copy2(str(src), str(dest))
+            self._set_status(f"Backup saved: {dest.name}")
+        except Exception:
+            app_error(self, ErrorCode.IO_BACKUP)
 
     @on(Button.Pressed, "#vacuum-btn")
     def do_vacuum(self) -> None:
-        db.vacuum_db(self.app.db_conn)
-        self._set_status("Database vacuumed successfully")
+        try:
+            db.vacuum_db(self.app.db_conn)
+            self._set_status("Database vacuumed successfully")
+        except Exception:
+            app_error(self, ErrorCode.DB_VACUUM)
 
     @on(Button.Pressed, "#create-user-btn")
     def create_user(self) -> None:
@@ -185,9 +195,12 @@ class AdminScreen(Screen):
                 return
             user = db.get_user(self.app.db_conn, user_id)
             if user:
-                db.delete_user(self.app.db_conn, user_id)
-                self._set_status(f"User '{user.username}' deleted")
-                self._refresh_users()
+                try:
+                    db.delete_user(self.app.db_conn, user_id)
+                    self._set_status(f"User '{user.username}' deleted")
+                    self._refresh_users()
+                except Exception:
+                    app_error(self, ErrorCode.DB_DELETE)
 
     @on(Button.Pressed, "#back-btn")
     def action_go_back(self) -> None:

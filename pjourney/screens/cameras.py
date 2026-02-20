@@ -13,6 +13,7 @@ from pjourney.widgets.confirm_modal import ConfirmModal
 
 from pjourney.db import database as db
 from pjourney.db.models import Camera, CameraIssue
+from pjourney.errors import ErrorCode, app_error
 from pjourney.widgets.inventory_table import InventoryTable
 
 CAMERA_TYPES = [("Film", "film"), ("Digital", "digital")]
@@ -253,22 +254,25 @@ class CamerasScreen(Screen):
         self._refresh()
 
     def _refresh(self) -> None:
-        table = self.query_one("#camera-table", InventoryTable)
-        table.clear()
-        cameras = db.get_cameras(self.app.db_conn, self.app.current_user.id)
-        for c in cameras:
-            if c.camera_type == "digital":
-                type_label = "Digital"
-                sensor_label = _SENSOR_LABEL.get(c.sensor_size, c.sensor_size) if c.sensor_size else "N/A"
-            else:
-                type_label = "Film"
-                sensor_label = "N/A"
-            table.add_row(
-                str(c.id), c.name, c.make, c.model,
-                c.serial_number, str(c.year_built or ""),
-                type_label, sensor_label,
-                key=str(c.id),
-            )
+        try:
+            table = self.query_one("#camera-table", InventoryTable)
+            table.clear()
+            cameras = db.get_cameras(self.app.db_conn, self.app.current_user.id)
+            for c in cameras:
+                if c.camera_type == "digital":
+                    type_label = "Digital"
+                    sensor_label = _SENSOR_LABEL.get(c.sensor_size, c.sensor_size) if c.sensor_size else "N/A"
+                else:
+                    type_label = "Film"
+                    sensor_label = "N/A"
+                table.add_row(
+                    str(c.id), c.name, c.make, c.model,
+                    c.serial_number, str(c.year_built or ""),
+                    type_label, sensor_label,
+                    key=str(c.id),
+                )
+        except Exception:
+            app_error(self, ErrorCode.DB_LOAD)
 
     def _get_selected_id(self) -> int | None:
         table = self.query_one("#camera-table", InventoryTable)
@@ -281,8 +285,11 @@ class CamerasScreen(Screen):
     def action_add(self) -> None:
         def on_result(camera: Camera | None) -> None:
             if camera:
-                db.save_camera(self.app.db_conn, camera)
-                self._refresh()
+                try:
+                    db.save_camera(self.app.db_conn, camera)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(CameraFormModal(), on_result)
 
     @on(Button.Pressed, "#edit-btn")
@@ -293,8 +300,11 @@ class CamerasScreen(Screen):
         camera = db.get_camera(self.app.db_conn, cam_id)
         def on_result(c: Camera | None) -> None:
             if c:
-                db.save_camera(self.app.db_conn, c)
-                self._refresh()
+                try:
+                    db.save_camera(self.app.db_conn, c)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(CameraFormModal(camera), on_result)
 
     @on(Button.Pressed, "#del-btn")
@@ -304,8 +314,11 @@ class CamerasScreen(Screen):
             return
         def on_confirmed(confirmed: bool) -> None:
             if confirmed:
-                db.delete_camera(self.app.db_conn, cam_id)
-                self._refresh()
+                try:
+                    db.delete_camera(self.app.db_conn, cam_id)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_DELETE)
         self.app.push_screen(ConfirmModal("Delete this camera? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#detail-btn")
@@ -370,46 +383,49 @@ class CameraDetailScreen(Screen):
         self._refresh()
 
     def _refresh(self) -> None:
-        cam_id = self.app._camera_detail_id
-        camera = db.get_camera(self.app.db_conn, cam_id)
-        if not camera:
-            self.app.pop_screen()
-            return
+        try:
+            cam_id = self.app._camera_detail_id
+            camera = db.get_camera(self.app.db_conn, cam_id)
+            if not camera:
+                self.app.pop_screen()
+                return
 
-        info = self.query_one("#camera-info", Vertical)
-        info.remove_children()
-        info.mount(Static(f"{camera.name}", markup=False))
-        info.mount(Static(f"Make: {camera.make}  Model: {camera.model}", markup=False))
-        info.mount(Static(f"Serial: {camera.serial_number}", markup=False))
-        details = []
-        if camera.year_built:
-            details.append(f"Built: {camera.year_built}")
-        if camera.year_purchased:
-            details.append(f"Purchased: {camera.year_purchased}")
-        if camera.purchased_from:
-            details.append(f"From: {camera.purchased_from}")
-        if details:
-            info.mount(Static("  ".join(details), markup=False))
-        if camera.description:
-            info.mount(Static(f"Description: {camera.description}", markup=False))
-        if camera.notes:
-            info.mount(Static(f"Notes: {camera.notes}", markup=False))
-        type_label = "Digital" if camera.camera_type == "digital" else "Film"
-        if camera.camera_type == "digital" and camera.sensor_size:
-            sensor_label = _SENSOR_LABEL.get(camera.sensor_size, camera.sensor_size)
-            info.mount(Static(f"Type: {type_label}  Sensor: {sensor_label}", markup=False))
-        else:
-            info.mount(Static(f"Type: {type_label}", markup=False))
+            info = self.query_one("#camera-info", Vertical)
+            info.remove_children()
+            info.mount(Static(f"{camera.name}", markup=False))
+            info.mount(Static(f"Make: {camera.make}  Model: {camera.model}", markup=False))
+            info.mount(Static(f"Serial: {camera.serial_number}", markup=False))
+            details = []
+            if camera.year_built:
+                details.append(f"Built: {camera.year_built}")
+            if camera.year_purchased:
+                details.append(f"Purchased: {camera.year_purchased}")
+            if camera.purchased_from:
+                details.append(f"From: {camera.purchased_from}")
+            if details:
+                info.mount(Static("  ".join(details), markup=False))
+            if camera.description:
+                info.mount(Static(f"Description: {camera.description}", markup=False))
+            if camera.notes:
+                info.mount(Static(f"Notes: {camera.notes}", markup=False))
+            type_label = "Digital" if camera.camera_type == "digital" else "Film"
+            if camera.camera_type == "digital" and camera.sensor_size:
+                sensor_label = _SENSOR_LABEL.get(camera.sensor_size, camera.sensor_size)
+                info.mount(Static(f"Type: {type_label}  Sensor: {sensor_label}", markup=False))
+            else:
+                info.mount(Static(f"Type: {type_label}", markup=False))
 
-        table = self.query_one("#issue-table", InventoryTable)
-        table.clear()
-        issues = db.get_camera_issues(self.app.db_conn, cam_id)
-        for i in issues:
-            table.add_row(
-                str(i.id), i.description, str(i.date_noted),
-                "Yes" if i.resolved else "No", i.notes,
-                key=str(i.id),
-            )
+            table = self.query_one("#issue-table", InventoryTable)
+            table.clear()
+            issues = db.get_camera_issues(self.app.db_conn, cam_id)
+            for i in issues:
+                table.add_row(
+                    str(i.id), i.description, str(i.date_noted),
+                    "Yes" if i.resolved else "No", i.notes,
+                    key=str(i.id),
+                )
+        except Exception:
+            app_error(self, ErrorCode.DB_LOAD)
 
     def _get_selected_issue_id(self) -> int | None:
         table = self.query_one("#issue-table", InventoryTable)
@@ -423,8 +439,11 @@ class CameraDetailScreen(Screen):
         cam_id = self.app._camera_detail_id
         def on_result(issue: CameraIssue | None) -> None:
             if issue:
-                db.save_camera_issue(self.app.db_conn, issue)
-                self._refresh()
+                try:
+                    db.save_camera_issue(self.app.db_conn, issue)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(IssueFormModal(camera_id=cam_id), on_result)
 
     @on(Button.Pressed, "#resolve-btn")
@@ -432,15 +451,18 @@ class CameraDetailScreen(Screen):
         issue_id = self._get_selected_issue_id()
         if issue_id is None:
             return
-        row = self.app.db_conn.execute(
-            "SELECT * FROM camera_issues WHERE id = ?", (issue_id,)
-        ).fetchone()
-        if row:
-            issue = CameraIssue(**dict(row))
-            issue.resolved = True
-            issue.resolved_date = date.today()
-            db.save_camera_issue(self.app.db_conn, issue)
-            self._refresh()
+        try:
+            row = self.app.db_conn.execute(
+                "SELECT * FROM camera_issues WHERE id = ?", (issue_id,)
+            ).fetchone()
+            if row:
+                issue = CameraIssue(**dict(row))
+                issue.resolved = True
+                issue.resolved_date = date.today()
+                db.save_camera_issue(self.app.db_conn, issue)
+                self._refresh()
+        except Exception:
+            app_error(self, ErrorCode.DB_SAVE)
 
     @on(Button.Pressed, "#del-issue-btn")
     def delete_issue(self) -> None:
@@ -449,8 +471,11 @@ class CameraDetailScreen(Screen):
             return
         def on_confirmed(confirmed: bool) -> None:
             if confirmed:
-                db.delete_camera_issue(self.app.db_conn, issue_id)
-                self._refresh()
+                try:
+                    db.delete_camera_issue(self.app.db_conn, issue_id)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_DELETE)
         self.app.push_screen(ConfirmModal("Delete this issue? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#back-btn")

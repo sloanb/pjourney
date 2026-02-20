@@ -9,6 +9,7 @@ from textual.widgets import Button, Footer, Label, Static
 from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
+from pjourney.errors import ErrorCode, app_error
 
 
 class DashboardScreen(Screen):
@@ -127,33 +128,36 @@ class DashboardScreen(Screen):
         self._refresh_data()
 
     def _refresh_data(self) -> None:
-        user_id = self.app.current_user.id
-        conn = self.app.db_conn
-        counts = db.get_counts(conn, user_id)
-        self.query_one("#camera-count", Label).update(str(counts["cameras"]))
-        self.query_one("#lens-count", Label).update(str(counts["lenses"]))
-        self.query_one("#stock-count", Label).update(str(counts["film_stocks"]))
-        self.query_one("#roll-count", Label).update(str(counts["rolls"]))
+        try:
+            user_id = self.app.current_user.id
+            conn = self.app.db_conn
+            counts = db.get_counts(conn, user_id)
+            self.query_one("#camera-count", Label).update(str(counts["cameras"]))
+            self.query_one("#lens-count", Label).update(str(counts["lenses"]))
+            self.query_one("#stock-count", Label).update(str(counts["film_stocks"]))
+            self.query_one("#roll-count", Label).update(str(counts["rolls"]))
 
-        stats = db.get_usage_stats(conn, user_id)
-        self.query_one("#fav-camera", Label).update(stats["camera"] or "—")
-        self.query_one("#fav-lens", Label).update(stats["lens"] or "—")
-        self.query_one("#fav-film", Label).update(stats["film_stock"] or "—")
+            stats = db.get_usage_stats(conn, user_id)
+            self.query_one("#fav-camera", Label).update(stats["camera"] or "—")
+            self.query_one("#fav-lens", Label).update(stats["lens"] or "—")
+            self.query_one("#fav-film", Label).update(stats["film_stock"] or "—")
 
-        loaded = db.get_loaded_cameras(conn, user_id)
-        loaded_list = self.query_one("#loaded-list", Vertical)
-        loaded_list.remove_children()
-        if loaded:
-            for item in loaded:
-                loaded_list.mount(
-                    Static(
-                        f"  {item['camera_name']} — {item['film_name']} ({item['status']})",
-                        classes="loaded-item",
-                        markup=False,
+            loaded = db.get_loaded_cameras(conn, user_id)
+            loaded_list = self.query_one("#loaded-list", Vertical)
+            loaded_list.remove_children()
+            if loaded:
+                for item in loaded:
+                    loaded_list.mount(
+                        Static(
+                            f"  {item['camera_name']} — {item['film_name']} ({item['status']})",
+                            classes="loaded-item",
+                            markup=False,
+                        )
                     )
-                )
-        else:
-            loaded_list.mount(Static("  No cameras currently loaded", markup=False))
+            else:
+                loaded_list.mount(Static("  No cameras currently loaded", markup=False))
+        except Exception:
+            app_error(self, ErrorCode.DB_LOAD)
 
     @on(Button.Pressed, "#btn-cameras")
     def go_cameras_btn(self) -> None:

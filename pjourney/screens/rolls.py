@@ -12,6 +12,7 @@ from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
 from pjourney.db.models import PROCESS_TYPES, ROLL_STATUSES, DevelopmentStep, Roll, RollDevelopment
+from pjourney.errors import ErrorCode, app_error
 from pjourney.widgets.inventory_table import InventoryTable
 
 
@@ -530,21 +531,24 @@ class RollsScreen(Screen):
         self._refresh()
 
     def _refresh(self) -> None:
-        table = self.query_one("#roll-table", InventoryTable)
-        table.clear()
-        conn = self.app.db_conn
-        user_id = self.app.current_user.id
-        rolls = db.get_rolls(conn, user_id, self._filter_status)
-        for r in rolls:
-            stock = db.get_film_stock(conn, r.film_stock_id)
-            stock_name = f"{stock.brand} {stock.name}" if stock else "?"
-            camera = db.get_camera(conn, r.camera_id) if r.camera_id else None
-            camera_name = camera.name if camera else ""
-            table.add_row(
-                str(r.id), stock_name, camera_name, r.status,
-                str(r.loaded_date or ""), r.notes,
-                key=str(r.id),
-            )
+        try:
+            table = self.query_one("#roll-table", InventoryTable)
+            table.clear()
+            conn = self.app.db_conn
+            user_id = self.app.current_user.id
+            rolls = db.get_rolls(conn, user_id, self._filter_status)
+            for r in rolls:
+                stock = db.get_film_stock(conn, r.film_stock_id)
+                stock_name = f"{stock.brand} {stock.name}" if stock else "?"
+                camera = db.get_camera(conn, r.camera_id) if r.camera_id else None
+                camera_name = camera.name if camera else ""
+                table.add_row(
+                    str(r.id), stock_name, camera_name, r.status,
+                    str(r.loaded_date or ""), r.notes,
+                    key=str(r.id),
+                )
+        except Exception:
+            app_error(self, ErrorCode.DB_LOAD)
 
     def _get_selected_id(self) -> int | None:
         table = self.query_one("#roll-table", InventoryTable)
@@ -594,16 +598,19 @@ class RollsScreen(Screen):
             if result is None:
                 return
             stock_id, notes = result
-            stock = db.get_film_stock(self.app.db_conn, stock_id)
-            if not stock:
-                return
-            roll = Roll(
-                user_id=self.app.current_user.id,
-                film_stock_id=stock_id,
-                notes=notes,
-            )
-            db.create_roll(self.app.db_conn, roll, stock.frames_per_roll)
-            self._refresh()
+            try:
+                stock = db.get_film_stock(self.app.db_conn, stock_id)
+                if not stock:
+                    return
+                roll = Roll(
+                    user_id=self.app.current_user.id,
+                    film_stock_id=stock_id,
+                    notes=notes,
+                )
+                db.create_roll(self.app.db_conn, roll, stock.frames_per_roll)
+                self._refresh()
+            except Exception:
+                app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(CreateRollModal(), on_result)
 
     @on(Button.Pressed, "#load-btn")
@@ -619,13 +626,16 @@ class RollsScreen(Screen):
             if result is None:
                 return
             camera_id, lens_id = result
-            roll.camera_id = camera_id
-            roll.lens_id = lens_id
-            roll.status = "loaded"
-            roll.loaded_date = date.today()
-            db.update_roll(self.app.db_conn, roll)
-            db.set_roll_frames_lens(self.app.db_conn, roll_id, lens_id)
-            self._refresh()
+            try:
+                roll.camera_id = camera_id
+                roll.lens_id = lens_id
+                roll.status = "loaded"
+                roll.loaded_date = date.today()
+                db.update_roll(self.app.db_conn, roll)
+                db.set_roll_frames_lens(self.app.db_conn, roll_id, lens_id)
+                self._refresh()
+            except Exception:
+                app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(LoadRollModal(), on_result)
 
     @on(Button.Pressed, "#advance-btn")
@@ -643,14 +653,17 @@ class RollsScreen(Screen):
         if next_status == "developing":
             self._start_developing_flow(roll)
             return
-        roll.status = next_status
-        today = date.today()
-        if roll.status == "finished":
-            roll.finished_date = today
-        elif roll.status == "developed":
-            roll.developed_date = today
-        db.update_roll(self.app.db_conn, roll)
-        self._refresh()
+        try:
+            roll.status = next_status
+            today = date.today()
+            if roll.status == "finished":
+                roll.finished_date = today
+            elif roll.status == "developed":
+                roll.developed_date = today
+            db.update_roll(self.app.db_conn, roll)
+            self._refresh()
+        except Exception:
+            app_error(self, ErrorCode.DB_SAVE)
 
     def _start_developing_flow(self, roll: Roll) -> None:
         def on_type_chosen(dev_type: str | None) -> None:
@@ -662,12 +675,15 @@ class RollsScreen(Screen):
                 if result is None:
                     return
                 dev, steps = result
-                dev.roll_id = roll.id
-                db.save_roll_development(self.app.db_conn, dev, steps)
-                roll.status = "developing"
-                roll.sent_for_dev_date = date.today()
-                db.update_roll(self.app.db_conn, roll)
-                self._refresh()
+                try:
+                    dev.roll_id = roll.id
+                    db.save_roll_development(self.app.db_conn, dev, steps)
+                    roll.status = "developing"
+                    roll.sent_for_dev_date = date.today()
+                    db.update_roll(self.app.db_conn, roll)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
 
             self.app.push_screen(modal, on_dev_result)
 
@@ -693,8 +709,11 @@ class RollsScreen(Screen):
         roll_id = self._get_selected_id()
         if roll_id is None:
             return
-        db.delete_roll(self.app.db_conn, roll_id)
-        self._refresh()
+        try:
+            db.delete_roll(self.app.db_conn, roll_id)
+            self._refresh()
+        except Exception:
+            app_error(self, ErrorCode.DB_DELETE)
 
     @on(Button.Pressed, "#back-btn")
     def action_go_back(self) -> None:

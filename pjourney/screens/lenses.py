@@ -11,6 +11,7 @@ from pjourney.widgets.confirm_modal import ConfirmModal
 
 from pjourney.db import database as db
 from pjourney.db.models import Lens, LensNote
+from pjourney.errors import ErrorCode, app_error
 from pjourney.widgets.inventory_table import InventoryTable
 
 
@@ -77,9 +78,13 @@ class LensFormModal(ModalScreen[Lens | None]):
         ln.model = self.query_one("#model", Input).value.strip()
         ln.focal_length = self.query_one("#focal_length", Input).value.strip()
         ma = self.query_one("#max_aperture", Input).value.strip()
-        ln.max_aperture = float(ma) if ma else None
         fd = self.query_one("#filter_diameter", Input).value.strip()
-        ln.filter_diameter = float(fd) if fd else None
+        try:
+            ln.max_aperture = float(ma) if ma else None
+            ln.filter_diameter = float(fd) if fd else None
+        except ValueError:
+            app_error(self, ErrorCode.VAL_NUMBER, detail="Aperture and filter size must be numbers (e.g. 1.4, 52.0).")
+            return
         yb = self.query_one("#year_built", Input).value.strip()
         ln.year_built = int(yb) if yb else None
         yp = self.query_one("#year_purchased", Input).value.strip()
@@ -193,16 +198,19 @@ class LensesScreen(Screen):
         self._refresh()
 
     def _refresh(self) -> None:
-        table = self.query_one("#lens-table", InventoryTable)
-        table.clear()
-        lenses = db.get_lenses(self.app.db_conn, self.app.current_user.id)
-        for ln in lenses:
-            table.add_row(
-                str(ln.id), ln.name, ln.make, ln.focal_length,
-                f"f/{ln.max_aperture}" if ln.max_aperture else "",
-                f"{ln.filter_diameter}mm" if ln.filter_diameter else "",
-                key=str(ln.id),
-            )
+        try:
+            table = self.query_one("#lens-table", InventoryTable)
+            table.clear()
+            lenses = db.get_lenses(self.app.db_conn, self.app.current_user.id)
+            for ln in lenses:
+                table.add_row(
+                    str(ln.id), ln.name, ln.make, ln.focal_length,
+                    f"f/{ln.max_aperture}" if ln.max_aperture else "",
+                    f"{ln.filter_diameter}mm" if ln.filter_diameter else "",
+                    key=str(ln.id),
+                )
+        except Exception:
+            app_error(self, ErrorCode.DB_LOAD)
 
     def _get_selected_id(self) -> int | None:
         table = self.query_one("#lens-table", InventoryTable)
@@ -215,8 +223,11 @@ class LensesScreen(Screen):
     def action_add(self) -> None:
         def on_result(lens: Lens | None) -> None:
             if lens:
-                db.save_lens(self.app.db_conn, lens)
-                self._refresh()
+                try:
+                    db.save_lens(self.app.db_conn, lens)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(LensFormModal(), on_result)
 
     @on(Button.Pressed, "#edit-btn")
@@ -227,8 +238,11 @@ class LensesScreen(Screen):
         lens = db.get_lens(self.app.db_conn, lens_id)
         def on_result(ln: Lens | None) -> None:
             if ln:
-                db.save_lens(self.app.db_conn, ln)
-                self._refresh()
+                try:
+                    db.save_lens(self.app.db_conn, ln)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(LensFormModal(lens), on_result)
 
     @on(Button.Pressed, "#del-btn")
@@ -238,8 +252,11 @@ class LensesScreen(Screen):
             return
         def on_confirmed(confirmed: bool) -> None:
             if confirmed:
-                db.delete_lens(self.app.db_conn, lens_id)
-                self._refresh()
+                try:
+                    db.delete_lens(self.app.db_conn, lens_id)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_DELETE)
         self.app.push_screen(ConfirmModal("Delete this lens? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#notes-btn")
@@ -311,48 +328,51 @@ class LensDetailScreen(Screen):
         self._refresh()
 
     def _refresh(self) -> None:
-        lens_id = self.app._lens_detail_id
-        lens = db.get_lens(self.app.db_conn, lens_id)
-        if not lens:
-            self.app.pop_screen()
-            return
+        try:
+            lens_id = self.app._lens_detail_id
+            lens = db.get_lens(self.app.db_conn, lens_id)
+            if not lens:
+                self.app.pop_screen()
+                return
 
-        info = self.query_one("#lens-info", Vertical)
-        info.remove_children()
-        info.mount(Static(f"{lens.name}", markup=False))
-        parts = []
-        if lens.make:
-            parts.append(f"Make: {lens.make}")
-        if lens.model:
-            parts.append(f"Model: {lens.model}")
-        if lens.focal_length:
-            parts.append(f"Focal: {lens.focal_length}")
-        if lens.max_aperture:
-            parts.append(f"f/{lens.max_aperture}")
-        if lens.filter_diameter:
-            parts.append(f"Filter: {lens.filter_diameter}mm")
-        if parts:
-            info.mount(Static("  ".join(parts), markup=False))
-        details = []
-        if lens.year_built:
-            details.append(f"Built: {lens.year_built}")
-        if lens.year_purchased:
-            details.append(f"Purchased: {lens.year_purchased}")
-        if lens.purchase_location:
-            details.append(f"From: {lens.purchase_location}")
-        if details:
-            info.mount(Static("  ".join(details), markup=False))
+            info = self.query_one("#lens-info", Vertical)
+            info.remove_children()
+            info.mount(Static(f"{lens.name}", markup=False))
+            parts = []
+            if lens.make:
+                parts.append(f"Make: {lens.make}")
+            if lens.model:
+                parts.append(f"Model: {lens.model}")
+            if lens.focal_length:
+                parts.append(f"Focal: {lens.focal_length}")
+            if lens.max_aperture:
+                parts.append(f"f/{lens.max_aperture}")
+            if lens.filter_diameter:
+                parts.append(f"Filter: {lens.filter_diameter}mm")
+            if parts:
+                info.mount(Static("  ".join(parts), markup=False))
+            details = []
+            if lens.year_built:
+                details.append(f"Built: {lens.year_built}")
+            if lens.year_purchased:
+                details.append(f"Purchased: {lens.year_purchased}")
+            if lens.purchase_location:
+                details.append(f"From: {lens.purchase_location}")
+            if details:
+                info.mount(Static("  ".join(details), markup=False))
 
-        table = self.query_one("#notes-table", InventoryTable)
-        table.clear()
-        notes = db.get_lens_notes(self.app.db_conn, lens_id)
-        for n in notes:
-            preview = n.content.replace("\n", " ")
-            if len(preview) > 70:
-                preview = preview[:70] + "..."
-            created = str(n.created_at)[:16] if n.created_at else ""
-            updated = str(n.updated_at)[:16] if n.updated_at else ""
-            table.add_row(str(n.id), preview, created, updated, key=str(n.id))
+            table = self.query_one("#notes-table", InventoryTable)
+            table.clear()
+            notes = db.get_lens_notes(self.app.db_conn, lens_id)
+            for n in notes:
+                preview = n.content.replace("\n", " ")
+                if len(preview) > 70:
+                    preview = preview[:70] + "..."
+                created = str(n.created_at)[:16] if n.created_at else ""
+                updated = str(n.updated_at)[:16] if n.updated_at else ""
+                table.add_row(str(n.id), preview, created, updated, key=str(n.id))
+        except Exception:
+            app_error(self, ErrorCode.DB_LOAD)
 
     def _get_selected_note_id(self) -> int | None:
         table = self.query_one("#notes-table", InventoryTable)
@@ -366,8 +386,11 @@ class LensDetailScreen(Screen):
         lens_id = self.app._lens_detail_id
         def on_result(note: LensNote | None) -> None:
             if note:
-                db.save_lens_note(self.app.db_conn, note)
-                self._refresh()
+                try:
+                    db.save_lens_note(self.app.db_conn, note)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(LensNoteFormModal(lens_id=lens_id), on_result)
 
     @on(Button.Pressed, "#edit-note-btn")
@@ -380,8 +403,11 @@ class LensDetailScreen(Screen):
             return
         def on_result(n: LensNote | None) -> None:
             if n:
-                db.save_lens_note(self.app.db_conn, n)
-                self._refresh()
+                try:
+                    db.save_lens_note(self.app.db_conn, n)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(LensNoteFormModal(note), on_result)
 
     @on(Button.Pressed, "#del-note-btn")
@@ -391,8 +417,11 @@ class LensDetailScreen(Screen):
             return
         def on_confirmed(confirmed: bool) -> None:
             if confirmed:
-                db.delete_lens_note(self.app.db_conn, note_id)
-                self._refresh()
+                try:
+                    db.delete_lens_note(self.app.db_conn, note_id)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_DELETE)
         self.app.push_screen(ConfirmModal("Delete this note? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#back-btn")

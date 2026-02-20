@@ -12,6 +12,7 @@ from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
 from pjourney.db.models import Frame
+from pjourney.errors import ErrorCode, app_error
 from pjourney.widgets.inventory_table import InventoryTable
 
 
@@ -138,37 +139,40 @@ class FramesScreen(Screen):
         self._refresh()
 
     def _refresh(self) -> None:
-        roll_id = self.app._frames_roll_id
-        conn = self.app.db_conn
-        roll = db.get_roll(conn, roll_id)
-        if not roll:
-            self.app.pop_screen()
-            return
+        try:
+            roll_id = self.app._frames_roll_id
+            conn = self.app.db_conn
+            roll = db.get_roll(conn, roll_id)
+            if not roll:
+                self.app.pop_screen()
+                return
 
-        stock = db.get_film_stock(conn, roll.film_stock_id)
-        stock_name = f"{stock.brand} {stock.name}" if stock else "?"
-        camera = db.get_camera(conn, roll.camera_id) if roll.camera_id else None
-        camera_name = camera.name if camera else "Not loaded"
+            stock = db.get_film_stock(conn, roll.film_stock_id)
+            stock_name = f"{stock.brand} {stock.name}" if stock else "?"
+            camera = db.get_camera(conn, roll.camera_id) if roll.camera_id else None
+            camera_name = camera.name if camera else "Not loaded"
 
-        info = self.query_one("#roll-info", Vertical)
-        info.remove_children()
-        info.mount(Static(f"Roll #{roll.id} — {stock_name}", markup=False))
-        info.mount(Static(f"Camera: {camera_name}  Status: {roll.status}", markup=False))
+            info = self.query_one("#roll-info", Vertical)
+            info.remove_children()
+            info.mount(Static(f"Roll #{roll.id} — {stock_name}", markup=False))
+            info.mount(Static(f"Camera: {camera_name}  Status: {roll.status}", markup=False))
 
-        table = self.query_one("#frame-table", InventoryTable)
-        table.clear()
-        frames = db.get_frames(conn, roll_id)
-        for f in frames:
-            lens_name = ""
-            if f.lens_id:
-                lens = db.get_lens(conn, f.lens_id)
-                lens_name = lens.name if lens else ""
-            table.add_row(
-                str(f.frame_number), f.subject, f.aperture,
-                f.shutter_speed, lens_name,
-                str(f.date_taken or ""), f.location,
-                key=str(f.id),
-            )
+            table = self.query_one("#frame-table", InventoryTable)
+            table.clear()
+            frames = db.get_frames(conn, roll_id)
+            for f in frames:
+                lens_name = ""
+                if f.lens_id:
+                    lens = db.get_lens(conn, f.lens_id)
+                    lens_name = lens.name if lens else ""
+                table.add_row(
+                    str(f.frame_number), f.subject, f.aperture,
+                    f.shutter_speed, lens_name,
+                    str(f.date_taken or ""), f.location,
+                    key=str(f.id),
+                )
+        except Exception:
+            app_error(self, ErrorCode.DB_LOAD)
 
     def _get_selected_frame_id(self) -> int | None:
         table = self.query_one("#frame-table", InventoryTable)
@@ -188,8 +192,11 @@ class FramesScreen(Screen):
 
         def on_result(f: Frame | None) -> None:
             if f:
-                db.update_frame(self.app.db_conn, f)
-                self._refresh()
+                try:
+                    db.update_frame(self.app.db_conn, f)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(FrameEditModal(frame), on_result)
 
     @on(Button.Pressed, "#back-btn")

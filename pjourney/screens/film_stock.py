@@ -11,6 +11,7 @@ from pjourney.widgets.confirm_modal import ConfirmModal
 
 from pjourney.db import database as db
 from pjourney.db.models import FilmStock
+from pjourney.errors import ErrorCode, app_error
 from pjourney.widgets.inventory_table import InventoryTable
 
 
@@ -114,10 +115,14 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
         else:
             s.type = self.query_one("#type", Select).value
             iso_str = self.query_one("#iso", Input).value.strip()
-            s.iso = int(iso_str) if iso_str else 400
-            s.format = self.query_one("#format", Select).value
             fpr = self.query_one("#frames_per_roll", Input).value.strip()
-            s.frames_per_roll = int(fpr) if fpr else 36
+            try:
+                s.iso = int(iso_str) if iso_str else 400
+                s.frames_per_roll = int(fpr) if fpr else 36
+            except ValueError:
+                app_error(self, ErrorCode.VAL_NUMBER, detail="ISO and Frames must be whole numbers.")
+                return
+            s.format = self.query_one("#format", Select).value
         s.notes = self.query_one("#notes", Input).value.strip()
         s.user_id = self.app.current_user.id
         self.dismiss(s)
@@ -168,27 +173,30 @@ class FilmStockScreen(Screen):
         self._refresh()
 
     def _refresh(self) -> None:
-        table = self.query_one("#stock-table", InventoryTable)
-        table.clear()
-        stocks = db.get_film_stocks(self.app.db_conn, self.app.current_user.id)
-        for s in stocks:
-            if s.media_type == "digital":
-                media_display = "Digital"
-                type_display = "—"
-                iso_display = "—"
-                format_display = "—"
-                frames_display = "—"
-            else:
-                media_display = "Analog"
-                type_display = "Color" if s.type == "color" else "B&W"
-                iso_display = str(s.iso)
-                format_display = s.format
-                frames_display = str(s.frames_per_roll)
-            table.add_row(
-                str(s.id), s.brand, s.name, media_display, type_display,
-                iso_display, format_display, frames_display,
-                key=str(s.id),
-            )
+        try:
+            table = self.query_one("#stock-table", InventoryTable)
+            table.clear()
+            stocks = db.get_film_stocks(self.app.db_conn, self.app.current_user.id)
+            for s in stocks:
+                if s.media_type == "digital":
+                    media_display = "Digital"
+                    type_display = "—"
+                    iso_display = "—"
+                    format_display = "—"
+                    frames_display = "—"
+                else:
+                    media_display = "Analog"
+                    type_display = "Color" if s.type == "color" else "B&W"
+                    iso_display = str(s.iso)
+                    format_display = s.format
+                    frames_display = str(s.frames_per_roll)
+                table.add_row(
+                    str(s.id), s.brand, s.name, media_display, type_display,
+                    iso_display, format_display, frames_display,
+                    key=str(s.id),
+                )
+        except Exception:
+            app_error(self, ErrorCode.DB_LOAD)
 
     def _get_selected_id(self) -> int | None:
         table = self.query_one("#stock-table", InventoryTable)
@@ -201,8 +209,11 @@ class FilmStockScreen(Screen):
     def action_add(self) -> None:
         def on_result(stock: FilmStock | None) -> None:
             if stock:
-                db.save_film_stock(self.app.db_conn, stock)
-                self._refresh()
+                try:
+                    db.save_film_stock(self.app.db_conn, stock)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(FilmStockFormModal(), on_result)
 
     @on(Button.Pressed, "#edit-btn")
@@ -213,8 +224,11 @@ class FilmStockScreen(Screen):
         stock = db.get_film_stock(self.app.db_conn, stock_id)
         def on_result(s: FilmStock | None) -> None:
             if s:
-                db.save_film_stock(self.app.db_conn, s)
-                self._refresh()
+                try:
+                    db.save_film_stock(self.app.db_conn, s)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_SAVE)
         self.app.push_screen(FilmStockFormModal(stock), on_result)
 
     @on(Button.Pressed, "#del-btn")
@@ -224,8 +238,11 @@ class FilmStockScreen(Screen):
             return
         def on_confirmed(confirmed: bool) -> None:
             if confirmed:
-                db.delete_film_stock(self.app.db_conn, stock_id)
-                self._refresh()
+                try:
+                    db.delete_film_stock(self.app.db_conn, stock_id)
+                    self._refresh()
+                except Exception:
+                    app_error(self, ErrorCode.DB_DELETE)
         self.app.push_screen(ConfirmModal("Delete this film stock? This cannot be undone."), on_confirmed)
 
     @on(Button.Pressed, "#back-btn")
