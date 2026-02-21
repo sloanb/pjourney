@@ -1,6 +1,7 @@
 """Tests for development modals and _parse_duration helper."""
 
 import tempfile
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from pjourney.screens.rolls import (
     DevelopmentInfoModal,
     DevelopmentTypeModal,
     LabDevelopModal,
+    RollsScreen,
     SelfDevelopModal,
     _parse_duration,
 )
@@ -269,3 +271,180 @@ class TestDevelopmentInfoModal:
             app.screen.query_one("#close-btn", Button).press()
             await pilot.pause()
             assert len(app.screen_stack) == 1
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: self-develop advancement flow
+# ---------------------------------------------------------------------------
+
+class RollsFlowTestApp(App):
+    """Test app hosting RollsScreen for development flow integration tests."""
+
+    def __init__(self, connection, user):
+        super().__init__()
+        self.db_conn = connection
+        self.current_user = user
+
+    def compose(self) -> ComposeResult:
+        yield Label("host")
+
+
+class TestSelfDevelopAdvancement:
+    """Tests that self-develop advances to 'developed' and lab to 'developing'."""
+
+    def _setup_finished_roll(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll.status = "finished"
+        roll.finished_date = date.today()
+        roll = db.update_roll(conn, roll)
+        return user, roll
+
+    async def test_self_develop_advances_to_developed(self, conn):
+        user, roll = self._setup_finished_roll(conn)
+        app = RollsFlowTestApp(conn, user)
+        async with app.run_test() as pilot:
+            rolls_screen = RollsScreen()
+            await app.push_screen(rolls_screen)
+            await pilot.pause()
+
+            # Start the developing flow
+            rolls_screen._start_developing_flow(roll)
+            await pilot.pause()
+
+            # DevelopmentTypeModal: choose "Self Develop"
+            app.screen.query_one("#self-btn", Button).press()
+            await pilot.pause()
+
+            # SelfDevelopModal: fill in one step and save
+            app.screen.query_one("#step-0-chemical", Input).value = "D-76"
+            app.screen.query_one("#step-0-temp", Input).value = "20C"
+            app.screen.query_one("#step-0-duration", Input).value = "8:00"
+            app.screen.query_one("#save-btn", Button).press()
+            await pilot.pause()
+
+            # Roll should be "developed" (skipping "developing")
+            updated = db.get_roll(conn, roll.id)
+            assert updated.status == "developed"
+            assert updated.developed_date is not None
+            assert updated.sent_for_dev_date is not None
+
+    async def test_self_develop_saves_development_record(self, conn):
+        user, roll = self._setup_finished_roll(conn)
+        app = RollsFlowTestApp(conn, user)
+        async with app.run_test() as pilot:
+            rolls_screen = RollsScreen()
+            await app.push_screen(rolls_screen)
+            await pilot.pause()
+
+            rolls_screen._start_developing_flow(roll)
+            await pilot.pause()
+
+            app.screen.query_one("#self-btn", Button).press()
+            await pilot.pause()
+
+            app.screen.query_one("#step-0-chemical", Input).value = "HC-110"
+            app.screen.query_one("#save-btn", Button).press()
+            await pilot.pause()
+
+            # Development record should be saved with correct type
+            dev = db.get_roll_development_by_roll(conn, roll.id)
+            assert dev is not None
+            assert dev.dev_type == "self"
+            steps = db.get_development_steps(conn, dev.id)
+            assert len(steps) == 1
+            assert steps[0].chemical_name == "HC-110"
+
+    async def test_lab_develop_advances_to_developing(self, conn):
+        user, roll = self._setup_finished_roll(conn)
+        app = RollsFlowTestApp(conn, user)
+        async with app.run_test() as pilot:
+            rolls_screen = RollsScreen()
+            await app.push_screen(rolls_screen)
+            await pilot.pause()
+
+            rolls_screen._start_developing_flow(roll)
+            await pilot.pause()
+
+            # DevelopmentTypeModal: choose "Send to Lab"
+            app.screen.query_one("#lab-btn", Button).press()
+            await pilot.pause()
+
+            # LabDevelopModal: fill in lab name and save
+            app.screen.query_one("#lab-name", Input).value = "PhotoLab"
+            app.screen.query_one("#save-btn", Button).press()
+            await pilot.pause()
+
+            # Roll should be "developing" (not "developed")
+            updated = db.get_roll(conn, roll.id)
+            assert updated.status == "developing"
+            assert updated.sent_for_dev_date is not None
+            assert updated.developed_date is None
+
+    async def test_cancel_self_develop_stays_finished(self, conn):
+        user, roll = self._setup_finished_roll(conn)
+        app = RollsFlowTestApp(conn, user)
+        async with app.run_test() as pilot:
+            rolls_screen = RollsScreen()
+            await app.push_screen(rolls_screen)
+            await pilot.pause()
+
+            rolls_screen._start_developing_flow(roll)
+            await pilot.pause()
+
+            # Choose "Self Develop"
+            app.screen.query_one("#self-btn", Button).press()
+            await pilot.pause()
+
+            # Cancel the self-develop form
+            app.screen.query_one("#cancel-btn", Button).press()
+            await pilot.pause()
+
+            updated = db.get_roll(conn, roll.id)
+            assert updated.status == "finished"
+            assert updated.developed_date is None
+
+    async def test_cancel_type_selection_stays_finished(self, conn):
+        user, roll = self._setup_finished_roll(conn)
+        app = RollsFlowTestApp(conn, user)
+        async with app.run_test() as pilot:
+            rolls_screen = RollsScreen()
+            await app.push_screen(rolls_screen)
+            await pilot.pause()
+
+            rolls_screen._start_developing_flow(roll)
+            await pilot.pause()
+
+            # Cancel at the type selection modal
+            app.screen.query_one("#cancel-btn", Button).press()
+            await pilot.pause()
+
+            updated = db.get_roll(conn, roll.id)
+            assert updated.status == "finished"
+            assert updated.developed_date is None
+
+    async def test_cancel_lab_develop_stays_finished(self, conn):
+        user, roll = self._setup_finished_roll(conn)
+        app = RollsFlowTestApp(conn, user)
+        async with app.run_test() as pilot:
+            rolls_screen = RollsScreen()
+            await app.push_screen(rolls_screen)
+            await pilot.pause()
+
+            rolls_screen._start_developing_flow(roll)
+            await pilot.pause()
+
+            # Choose "Send to Lab"
+            app.screen.query_one("#lab-btn", Button).press()
+            await pilot.pause()
+
+            # Cancel the lab form
+            app.screen.query_one("#cancel-btn", Button).press()
+            await pilot.pause()
+
+            updated = db.get_roll(conn, roll.id)
+            assert updated.status == "finished"
+            assert updated.developed_date is None
