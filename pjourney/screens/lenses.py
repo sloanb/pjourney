@@ -2,7 +2,7 @@
 
 from textual import on
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Footer, Input, Label, Static, TextArea
 
@@ -21,12 +21,24 @@ class LensFormModal(ModalScreen[Lens | None]):
         align: center middle;
     }
     #form-box {
-        width: 70;
+        width: 100;
+        max-width: 95%;
         height: auto;
         max-height: 90%;
         border: heavy $accent;
         padding: 1 2;
         background: $surface;
+    }
+    #form-scroll {
+        height: 1fr;
+    }
+    #form-columns {
+        height: auto;
+    }
+    #col-left, #col-right {
+        width: 1fr;
+        height: auto;
+        padding: 0 1;
     }
     #form-box Label {
         margin: 1 0 0 0;
@@ -48,24 +60,28 @@ class LensFormModal(ModalScreen[Lens | None]):
         ln = self.lens
         with Vertical(id="form-box"):
             yield Static("Edit Lens" if ln.id else "Add Lens", markup=False)
-            yield Label("Name")
-            yield Input(value=ln.name, id="name")
-            yield Label("Make")
-            yield Input(value=ln.make, id="make")
-            yield Label("Model")
-            yield Input(value=ln.model, id="model")
-            yield Label("Focal Length (e.g. 50mm)")
-            yield Input(value=ln.focal_length, id="focal_length")
-            yield Label("Max Aperture (e.g. 1.4)")
-            yield Input(value=str(ln.max_aperture or ""), id="max_aperture")
-            yield Label("Filter Diameter (mm)")
-            yield Input(value=str(ln.filter_diameter or ""), id="filter_diameter")
-            yield Label("Year Built")
-            yield Input(value=str(ln.year_built or ""), id="year_built")
-            yield Label("Year Purchased")
-            yield Input(value=str(ln.year_purchased or ""), id="year_purchased")
-            yield Label("Purchase Location")
-            yield Input(value=ln.purchase_location or "", id="purchase_location")
+            with VerticalScroll(id="form-scroll"):
+                with Horizontal(id="form-columns"):
+                    with Vertical(id="col-left"):
+                        yield Label("Name")
+                        yield Input(value=ln.name, id="name")
+                        yield Label("Make")
+                        yield Input(value=ln.make, id="make")
+                        yield Label("Model")
+                        yield Input(value=ln.model, id="model")
+                        yield Label("Focal Length (e.g. 50mm)")
+                        yield Input(value=ln.focal_length, id="focal_length")
+                        yield Label("Max Aperture (e.g. 1.4)")
+                        yield Input(value=str(ln.max_aperture or ""), id="max_aperture")
+                    with Vertical(id="col-right"):
+                        yield Label("Filter Diameter (mm)")
+                        yield Input(value=str(ln.filter_diameter or ""), id="filter_diameter")
+                        yield Label("Year Built")
+                        yield Input(value=str(ln.year_built or ""), id="year_built")
+                        yield Label("Year Purchased")
+                        yield Input(value=str(ln.year_purchased or ""), id="year_purchased")
+                        yield Label("Purchase Location")
+                        yield Input(value=ln.purchase_location or "", id="purchase_location")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
