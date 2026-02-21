@@ -989,10 +989,11 @@ def get_usage_stats(conn: sqlite3.Connection, user_id: int) -> dict[str, str | N
 
 def get_loaded_cameras(conn: sqlite3.Connection, user_id: int) -> list[dict]:
     rows = conn.execute(
-        """SELECT c.name as camera_name, c.id as camera_id,
+        """SELECT COALESCE(c.name, 'No camera') as camera_name,
+                  c.id as camera_id,
                   fs.brand || ' ' || fs.name as film_name, r.status
            FROM rolls r
-           JOIN cameras c ON r.camera_id = c.id
+           LEFT JOIN cameras c ON r.camera_id = c.id
            JOIN film_stocks fs ON r.film_stock_id = fs.id
            WHERE r.user_id = ? AND r.status IN ('loaded', 'shooting')
            ORDER BY c.name""",

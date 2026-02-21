@@ -908,6 +908,8 @@ class RollsScreen(Screen):
         roll = db.get_roll(self.app.db_conn, roll_id)
         if not roll:
             return
+        if roll.status == "fresh":
+            return
         idx = ROLL_STATUSES.index(roll.status)
         if idx >= len(ROLL_STATUSES) - 1:
             return

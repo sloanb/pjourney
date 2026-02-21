@@ -9,7 +9,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Button, Input, Label
 
 from pjourney.db import database as db
-from pjourney.db.models import DevelopmentStep, FilmStock, Roll, RollDevelopment
+from pjourney.db.models import Camera, DevelopmentStep, FilmStock, Roll, RollDevelopment
 from pjourney.screens.rolls import (
     DevelopmentInfoModal,
     DevelopmentTypeModal,
@@ -448,6 +448,60 @@ class TestSelfDevelopAdvancement:
             updated = db.get_roll(conn, roll.id)
             assert updated.status == "finished"
             assert updated.developed_date is None
+
+
+# ---------------------------------------------------------------------------
+# Advance status guard: fresh rolls must not be advanced
+# ---------------------------------------------------------------------------
+
+class TestAdvanceStatusFreshGuard:
+    """Verify that advance_status does not advance fresh rolls (must use Load)."""
+
+    def _setup_fresh_roll(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        assert roll.status == "fresh"
+        return user, roll
+
+    async def test_advance_status_blocks_fresh_roll(self, conn):
+        """Pressing advance status on a fresh roll must not change its status."""
+        user, roll = self._setup_fresh_roll(conn)
+        app = RollsFlowTestApp(conn, user)
+        async with app.run_test() as pilot:
+            rolls_screen = RollsScreen()
+            await app.push_screen(rolls_screen)
+            await pilot.pause()
+
+            # Mock _get_selected_id to return our fresh roll
+            rolls_screen._get_selected_id = lambda: roll.id
+            rolls_screen.action_advance_status()
+            await pilot.pause()
+
+            updated = db.get_roll(conn, roll.id)
+            assert updated.status == "fresh"
+
+    async def test_advance_status_allows_loaded_roll(self, conn):
+        """Pressing advance status on a loaded roll should advance to shooting."""
+        user, roll = self._setup_fresh_roll(conn)
+        cam = db.save_camera(conn, Camera(user_id=user.id, name="FM2", make="Nikon"))
+        roll.camera_id = cam.id
+        roll.status = "loaded"
+        roll = db.update_roll(conn, roll)
+        app = RollsFlowTestApp(conn, user)
+        async with app.run_test() as pilot:
+            rolls_screen = RollsScreen()
+            await app.push_screen(rolls_screen)
+            await pilot.pause()
+
+            rolls_screen._get_selected_id = lambda: roll.id
+            rolls_screen.action_advance_status()
+            await pilot.pause()
+
+            updated = db.get_roll(conn, roll.id)
+            assert updated.status == "shooting"
 
 
 # ---------------------------------------------------------------------------

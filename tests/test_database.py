@@ -400,6 +400,23 @@ class TestUtility:
         loaded = db.get_loaded_cameras(conn, user.id)
         assert len(loaded) == 0
 
+    def test_get_loaded_cameras_with_null_camera_id(self, conn):
+        """Rolls with NULL camera_id must still appear (defensive against bad data)."""
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Gold 200",
+            frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll.camera_id = None
+        roll.status = "shooting"
+        db.update_roll(conn, roll)
+        loaded = db.get_loaded_cameras(conn, user.id)
+        assert len(loaded) == 1
+        assert loaded[0]["camera_name"] == "No camera"
+        assert loaded[0]["camera_id"] is None
+        assert loaded[0]["status"] == "shooting"
+
     def test_vacuum(self, conn):
         db.vacuum_db(conn)
 
