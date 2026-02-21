@@ -344,6 +344,62 @@ class TestUtility:
         assert len(loaded) == 1
         assert loaded[0]["camera_name"] == "FM2"
 
+    def test_get_loaded_cameras_includes_shooting(self, conn):
+        """Cameras with rolls in 'shooting' status must appear on the dashboard."""
+        user = db.get_users(conn)[0]
+        camera = db.save_camera(conn, Camera(user_id=user.id, name="AE-1", make="Canon"))
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Fuji", name="Superia 400",
+            frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll.camera_id = camera.id
+        roll.status = "shooting"
+        db.update_roll(conn, roll)
+        loaded = db.get_loaded_cameras(conn, user.id)
+        assert len(loaded) == 1
+        assert loaded[0]["camera_name"] == "AE-1"
+        assert loaded[0]["status"] == "shooting"
+
+    def test_get_loaded_cameras_includes_both_loaded_and_shooting(self, conn):
+        """Both 'loaded' and 'shooting' rolls should appear together."""
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Tri-X",
+            frames_per_roll=36,
+        ))
+        cam1 = db.save_camera(conn, Camera(user_id=user.id, name="FM2", make="Nikon"))
+        roll1 = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll1.camera_id = cam1.id
+        roll1.status = "loaded"
+        db.update_roll(conn, roll1)
+
+        cam2 = db.save_camera(conn, Camera(user_id=user.id, name="AE-1", make="Canon"))
+        roll2 = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll2.camera_id = cam2.id
+        roll2.status = "shooting"
+        db.update_roll(conn, roll2)
+
+        loaded = db.get_loaded_cameras(conn, user.id)
+        assert len(loaded) == 2
+        names = {r["camera_name"] for r in loaded}
+        assert names == {"FM2", "AE-1"}
+
+    def test_get_loaded_cameras_excludes_finished(self, conn):
+        """Rolls in 'finished' status must NOT appear as loaded cameras."""
+        user = db.get_users(conn)[0]
+        camera = db.save_camera(conn, Camera(user_id=user.id, name="K1000", make="Pentax"))
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5",
+            frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll.camera_id = camera.id
+        roll.status = "finished"
+        db.update_roll(conn, roll)
+        loaded = db.get_loaded_cameras(conn, user.id)
+        assert len(loaded) == 0
+
     def test_vacuum(self, conn):
         db.vacuum_db(conn)
 
