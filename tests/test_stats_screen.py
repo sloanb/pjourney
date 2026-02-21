@@ -117,6 +117,31 @@ class TestStatsScreen:
             await pilot.pause()
             assert not isinstance(app.screen, StatsScreen)
 
+    async def test_refresh_data_calls_app_error_on_db_failure(self, conn):
+        """When db.get_stats raises, _refresh_data must catch the exception and show
+        an error toast without propagating — the screen must remain alive.
+
+        Covers lines 78-79 (the except branch in _refresh_data).
+        """
+        from unittest.mock import patch
+
+        user = db.get_users(conn)[0]
+        app = StatsTestApp(conn, user)
+        async with app.run_test() as pilot:
+            await app.push_screen(StatsScreen())
+            await pilot.pause()
+            # Screen is up and healthy; now force get_stats to raise on the
+            # next call so the except branch (lines 78-79) is exercised.
+            with patch(
+                "pjourney.screens.stats.db.get_stats",
+                side_effect=RuntimeError("simulated db failure"),
+            ):
+                app.screen._refresh_data()
+                await pilot.pause()
+            # The screen must still be running — app_error toasts but does not
+            # propagate the exception or dismiss the screen.
+            assert isinstance(app.screen, StatsScreen)
+
 
 class TestStatsScreenPopulatedData:
     """Tests for stats screen sections that require data to exercise non-empty branches."""
