@@ -43,7 +43,7 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
         margin: 1 0 0 0;
     }
     #form-scroll {
-        height: auto;
+        height: 1fr;
     }
     #form-columns {
         height: auto;
