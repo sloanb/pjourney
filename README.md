@@ -78,12 +78,13 @@ tests/
   test_dropbox_provider.py — DropboxProvider tests with mocked SDK (25 tests)
   test_cloud_modals.py    — Cloud admin modal tests (22 tests)
   test_scan_modal.py      — ScanRollModal tests (7 tests)
-  test_stats_screen.py    — StatsScreen tests (6 tests)
+  test_film_stock_modal.py — FilmStockFormModal rendering and save/cancel tests (16 tests)
+  test_stats_screen.py    — StatsScreen tests (10 tests)
   test_recipe_modals.py   — RecipeFormModal and RecipePickerModal tests (15 tests)
   test_export.py          — CSV export function tests (10 tests)
 ```
 
-**324 total tests**
+**344 total tests**
 
 ## Roll Lifecycle
 
