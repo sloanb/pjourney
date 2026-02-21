@@ -14,6 +14,7 @@ from pjourney.screens.lenses import LensDetailScreen, LensesScreen
 from pjourney.screens.login import LoginScreen
 from pjourney.screens.rolls import RollsScreen
 from pjourney.screens.splash import SplashScreen
+from pjourney.screens.stats import StatsScreen
 
 
 class PJourneyApp(App):
@@ -35,6 +36,7 @@ class PJourneyApp(App):
         "rolls": RollsScreen,
         "frames": FramesScreen,
         "admin": AdminScreen,
+        "stats": StatsScreen,
     }
 
     current_user: User | None = None

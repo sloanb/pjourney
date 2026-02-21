@@ -31,14 +31,14 @@ python -m pytest tests/ -v
 
 ### Key directories
 
-- `pjourney/db/` — database.py (connection, schema, CRUD), models.py (dataclasses)
-- `pjourney/screens/` — login, dashboard, cameras, lenses, film_stock, rolls, frames, admin (admin.py also contains CloudAuthModal, CloudFolderBrowserModal, CloudRestoreModal, NewFolderModal)
+- `pjourney/db/` — database.py (connection, schema, CRUD, get_stats()), models.py (dataclasses)
+- `pjourney/screens/` — login, dashboard, cameras, lenses, film_stock, rolls (rolls.py also contains ScanRollModal), frames, stats (StatsScreen with aggregated photography data), admin (admin.py also contains CloudAuthModal, CloudFolderBrowserModal, CloudRestoreModal, NewFolderModal)
 - `pjourney/widgets/` — reusable InventoryTable widget
 - `pjourney/cloud/` — provider.py (CloudProvider ABC, dataclasses, CloudProviderError), credentials.py (CredentialStore wrapping OS keyring), dropbox_provider.py (DropboxProvider: PKCE OAuth, folder browse, upload/download/disconnect)
 - `pjourney/errors.py` — ErrorCode enum (PJ-DB01…PJ-CLD05, PJ-APP01) and app_error() toast helper
 - `docs/` — ERROR_CODES.md (user-facing error code reference)
-- `tests/` — test_database.py (80 CRUD tests), test_models.py (25 tests), test_errors.py (14 tests), test_dev_modals.py (28 tests), test_confirm_modal.py (16 tests), test_camera_form_modal.py (9 tests), test_dashboard.py (2 tests), test_cloud_settings.py (6 tests), test_cloud_provider.py (11 tests), test_dropbox_provider.py (25 tests), test_cloud_modals.py (22 tests)
+- `tests/` — test_database.py (98 CRUD tests), test_models.py (27 tests), test_errors.py (14 tests), test_dev_modals.py (28 tests), test_confirm_modal.py (16 tests), test_camera_form_modal.py (9 tests), test_dashboard.py (2 tests), test_cloud_settings.py (6 tests), test_cloud_provider.py (11 tests), test_dropbox_provider.py (25 tests), test_cloud_modals.py (22 tests), test_scan_modal.py (7 tests), test_stats_screen.py (6 tests)
 
 ### Screen flow
 
-Login → Dashboard → Cameras / Lenses / Film Stock / Rolls → Frames / Camera Detail → Admin
+Login → Dashboard → Cameras / Lenses / Film Stock / Rolls / Stats → Frames / Camera Detail → Admin

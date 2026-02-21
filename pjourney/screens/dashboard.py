@@ -19,6 +19,7 @@ class DashboardScreen(Screen):
         ("f", "go_film_stock", "Film Stock"),
         ("r", "go_rolls", "Rolls"),
         ("a", "go_admin", "Admin"),
+        ("s", "go_stats", "Stats"),
         ("q", "quit", "Quit"),
     ]
 
@@ -138,6 +139,7 @@ class DashboardScreen(Screen):
             yield Button("Film Stock [f]", id="btn-film-stock")
             yield Button("Rolls [r]", id="btn-rolls")
             yield Button("Admin [a]", id="btn-admin")
+            yield Button("Stats [s]", id="btn-stats")
         yield Footer()
 
     def on_screen_resume(self) -> None:
@@ -222,6 +224,10 @@ class DashboardScreen(Screen):
     def go_admin_btn(self) -> None:
         self.app.push_screen("admin")
 
+    @on(Button.Pressed, "#btn-stats")
+    def go_stats_btn(self) -> None:
+        self.app.push_screen("stats")
+
     def action_go_cameras(self) -> None:
         self.app.push_screen("cameras")
 
@@ -236,6 +242,9 @@ class DashboardScreen(Screen):
 
     def action_go_admin(self) -> None:
         self.app.push_screen("admin")
+
+    def action_go_stats(self) -> None:
+        self.app.push_screen("stats")
 
     def action_quit(self) -> None:
         from pjourney.screens.splash import SplashScreen

@@ -655,6 +655,48 @@ class TestMigrateDbSuccessPaths:
             assert "media_type" in columns
             conn.close()
 
+    def test_migrate_adds_scan_date_and_scan_notes_to_rolls(self):
+        """A DB without scan_date/scan_notes on rolls gets both columns added."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "old.db"
+            conn = db.get_connection(path)
+            # rolls has title/push_pull_stops but not scan_date/scan_notes
+            conn.executescript("""
+                CREATE TABLE rolls (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    film_stock_id INTEGER NOT NULL,
+                    lens_id INTEGER,
+                    camera_id INTEGER,
+                    status TEXT NOT NULL DEFAULT 'fresh',
+                    loaded_date DATE,
+                    finished_date DATE,
+                    sent_for_dev_date DATE,
+                    developed_date DATE,
+                    notes TEXT NOT NULL DEFAULT '',
+                    title TEXT NOT NULL DEFAULT '',
+                    push_pull_stops REAL NOT NULL DEFAULT 0.0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE cameras (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    camera_type TEXT NOT NULL DEFAULT 'film',
+                    sensor_size TEXT
+                );
+            """
+            + _FILM_STOCKS_NO_MEDIA_TYPE)
+            conn.commit()
+            db._migrate_db(conn)
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(rolls)").fetchall()
+            }
+            assert "scan_date" in columns
+            assert "scan_notes" in columns
+            conn.close()
+
 
 # ---------------------------------------------------------------------------
 # verify_password rehash path
@@ -1025,3 +1067,224 @@ class TestGetLowStockItems:
         result = db.get_low_stock_items(conn, user.id)
         assert result["low_stock"] == []
         assert result["out_of_stock"] == []
+
+
+# ---------------------------------------------------------------------------
+# Roll scan fields
+# ---------------------------------------------------------------------------
+
+class TestRollScanFields:
+    def test_roll_defaults_scan_fields(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        assert roll.scan_date is None
+        assert roll.scan_notes == ""
+
+    def test_update_roll_sets_scan_fields(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Tri-X", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll.scan_date = "2025-06-15"
+        roll.scan_notes = "Scanned with Plustek 8200i"
+        updated = db.update_roll(conn, roll)
+        assert str(updated.scan_date) == "2025-06-15"
+        assert updated.scan_notes == "Scanned with Plustek 8200i"
+
+    def test_update_roll_preserves_scan_fields(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll.scan_date = "2025-06-15"
+        roll.scan_notes = "High res scan"
+        db.update_roll(conn, roll)
+        # Now update a different field
+        roll.notes = "Updated notes"
+        updated = db.update_roll(conn, roll)
+        assert str(updated.scan_date) == "2025-06-15"
+        assert updated.scan_notes == "High res scan"
+
+
+# ---------------------------------------------------------------------------
+# get_stats
+# ---------------------------------------------------------------------------
+
+class TestGetStats:
+    def test_returns_expected_keys(self, conn):
+        user = db.get_users(conn)[0]
+        stats = db.get_stats(conn, user.id)
+        expected_keys = {
+            "rolls_by_status", "total_frames_logged", "top_film_stocks",
+            "rolls_by_format", "rolls_by_type", "top_cameras", "top_lenses",
+            "dev_type_split", "total_dev_cost", "rolls_by_month",
+        }
+        assert set(stats.keys()) == expected_keys
+
+    def test_empty_database_returns_zeros(self, conn):
+        user = db.get_users(conn)[0]
+        stats = db.get_stats(conn, user.id)
+        assert stats["rolls_by_status"] == {}
+        assert stats["total_frames_logged"] == 0
+        assert stats["top_film_stocks"] == []
+        assert stats["rolls_by_format"] == []
+        assert stats["rolls_by_type"] == []
+        assert stats["top_cameras"] == []
+        assert stats["top_lenses"] == []
+        assert stats["dev_type_split"] == {}
+        assert stats["total_dev_cost"] == 0.0
+        assert stats["rolls_by_month"] == []
+
+    def test_rolls_by_status_counts(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        r1 = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        r2 = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        r2.status = "loaded"
+        db.update_roll(conn, r2)
+        stats = db.get_stats(conn, user.id)
+        assert stats["rolls_by_status"]["fresh"] == 1
+        assert stats["rolls_by_status"]["loaded"] == 1
+
+    def test_total_frames_logged_counts_nonempty_subjects(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=3,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 3)
+        frames = db.get_frames(conn, roll.id)
+        frames[0].subject = "Portrait"
+        db.update_frame(conn, frames[0])
+        frames[1].subject = "Landscape"
+        db.update_frame(conn, frames[1])
+        # Frame 3 has empty subject — should not be counted
+        stats = db.get_stats(conn, user.id)
+        assert stats["total_frames_logged"] == 2
+
+    def test_top_film_stocks_ordered_by_count(self, conn):
+        user = db.get_users(conn)[0]
+        stock_a = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        stock_b = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5", frames_per_roll=36,
+        ))
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock_a.id), 36)
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock_b.id), 36)
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock_b.id), 36)
+        stats = db.get_stats(conn, user.id)
+        assert stats["top_film_stocks"][0]["name"] == "Ilford HP5"
+        assert stats["top_film_stocks"][0]["count"] == 2
+
+    def test_top_film_stocks_limited_to_5(self, conn):
+        user = db.get_users(conn)[0]
+        for i in range(6):
+            stock = db.save_film_stock(conn, FilmStock(
+                user_id=user.id, brand=f"Brand{i}", name=f"Film{i}", frames_per_roll=36,
+            ))
+            db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        stats = db.get_stats(conn, user.id)
+        assert len(stats["top_film_stocks"]) == 5
+
+    def test_rolls_by_format(self, conn):
+        user = db.get_users(conn)[0]
+        stock_35 = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra", format="35mm", frames_per_roll=36,
+        ))
+        stock_120 = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 120", format="120", frames_per_roll=12,
+        ))
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock_35.id), 36)
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock_120.id), 12)
+        stats = db.get_stats(conn, user.id)
+        formats = {item["format"]: item["count"] for item in stats["rolls_by_format"]}
+        assert formats["35mm"] == 1
+        assert formats["120"] == 1
+
+    def test_rolls_by_type_color_vs_bw(self, conn):
+        user = db.get_users(conn)[0]
+        stock_c = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", type="color", frames_per_roll=36,
+        ))
+        stock_bw = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5", type="black_and_white", frames_per_roll=36,
+        ))
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock_c.id), 36)
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock_bw.id), 36)
+        stats = db.get_stats(conn, user.id)
+        types = {item["type"]: item["count"] for item in stats["rolls_by_type"]}
+        assert types["color"] == 1
+        assert types["black_and_white"] == 1
+
+    def test_top_cameras(self, conn):
+        user = db.get_users(conn)[0]
+        camera = db.save_camera(conn, Camera(user_id=user.id, name="Nikon F3", make="Nikon"))
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(
+            user_id=user.id, film_stock_id=stock.id, camera_id=camera.id,
+        ), 36)
+        stats = db.get_stats(conn, user.id)
+        assert stats["top_cameras"][0]["name"] == "Nikon F3"
+        assert stats["top_cameras"][0]["count"] == 1
+
+    def test_top_lenses_by_frame_count(self, conn):
+        user = db.get_users(conn)[0]
+        lens = db.save_lens(conn, Lens(user_id=user.id, name="50mm f/1.4", make="Nikon"))
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra", frames_per_roll=3,
+        ))
+        roll = db.create_roll(conn, Roll(
+            user_id=user.id, film_stock_id=stock.id, lens_id=lens.id,
+        ), 3)
+        stats = db.get_stats(conn, user.id)
+        assert stats["top_lenses"][0]["name"] == "50mm f/1.4"
+        assert stats["top_lenses"][0]["count"] == 3
+
+    def test_dev_type_split_and_cost(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        dev = RollDevelopment(roll_id=roll.id, dev_type="lab", lab_name="Lab A", cost_amount=15.00)
+        db.save_roll_development(conn, dev, [])
+        stats = db.get_stats(conn, user.id)
+        assert stats["dev_type_split"]["lab"] == 1
+        assert stats["total_dev_cost"] == 15.00
+
+    def test_dev_cost_zero_when_no_records(self, conn):
+        user = db.get_users(conn)[0]
+        stats = db.get_stats(conn, user.id)
+        assert stats["total_dev_cost"] == 0.0
+
+    def test_rolls_by_month_excludes_null_loaded_date(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra", frames_per_roll=36,
+        ))
+        # Fresh roll has no loaded_date
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        stats = db.get_stats(conn, user.id)
+        assert stats["rolls_by_month"] == []
+
+    def test_rolls_by_month_includes_recent(self, conn):
+        from datetime import date as d
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll.loaded_date = d.today()
+        db.update_roll(conn, roll)
+        stats = db.get_stats(conn, user.id)
+        assert len(stats["rolls_by_month"]) == 1
+        assert stats["rolls_by_month"][0]["month"] == d.today().strftime("%Y-%m")

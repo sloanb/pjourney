@@ -205,6 +205,16 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+    for col, definition in [
+        ("scan_date", "DATE"),
+        ("scan_notes", "TEXT NOT NULL DEFAULT ''"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE rolls ADD COLUMN {col} {definition}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
 
 def _ensure_default_user(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
@@ -524,10 +534,12 @@ def update_roll(conn: sqlite3.Connection, roll: Roll) -> Roll:
     conn.execute(
         """UPDATE rolls SET film_stock_id=?, camera_id=?, lens_id=?, status=?,
            loaded_date=?, finished_date=?, sent_for_dev_date=?,
-           developed_date=?, notes=?, title=?, push_pull_stops=? WHERE id=?""",
+           developed_date=?, notes=?, title=?, push_pull_stops=?,
+           scan_date=?, scan_notes=? WHERE id=?""",
         (roll.film_stock_id, roll.camera_id, roll.lens_id, roll.status,
          roll.loaded_date, roll.finished_date, roll.sent_for_dev_date,
-         roll.developed_date, roll.notes, roll.title, roll.push_pull_stops, roll.id),
+         roll.developed_date, roll.notes, roll.title, roll.push_pull_stops,
+         roll.scan_date, roll.scan_notes, roll.id),
     )
     conn.commit()
     return get_roll(conn, roll.id)
@@ -686,6 +698,135 @@ def get_low_stock_items(conn: sqlite3.Connection, user_id: int, threshold: int =
         else:
             low_stock.append(item)
     return {"low_stock": low_stock, "out_of_stock": out_of_stock}
+
+
+# --- Statistics ---
+
+def get_stats(conn: sqlite3.Connection, user_id: int) -> dict:
+    """Return aggregated statistics for the user's photography data."""
+    # Rolls by status
+    rows = conn.execute(
+        "SELECT status, COUNT(*) as cnt FROM rolls WHERE user_id = ? GROUP BY status",
+        (user_id,),
+    ).fetchall()
+    rolls_by_status = {r["status"]: r["cnt"] for r in rows}
+
+    # Total frames logged (with non-empty subject)
+    row = conn.execute(
+        """SELECT COUNT(*) as cnt FROM frames f
+           JOIN rolls r ON f.roll_id = r.id
+           WHERE r.user_id = ? AND f.subject != ''""",
+        (user_id,),
+    ).fetchone()
+    total_frames_logged = row["cnt"]
+
+    # Top film stocks by roll count
+    rows = conn.execute(
+        """SELECT fs.brand || ' ' || fs.name as name, COUNT(*) as cnt
+           FROM rolls r
+           JOIN film_stocks fs ON r.film_stock_id = fs.id
+           WHERE r.user_id = ?
+           GROUP BY r.film_stock_id
+           ORDER BY cnt DESC
+           LIMIT 5""",
+        (user_id,),
+    ).fetchall()
+    top_film_stocks = [{"name": r["name"], "count": r["cnt"]} for r in rows]
+
+    # Rolls by format
+    rows = conn.execute(
+        """SELECT fs.format, COUNT(*) as cnt
+           FROM rolls r
+           JOIN film_stocks fs ON r.film_stock_id = fs.id
+           WHERE r.user_id = ?
+           GROUP BY fs.format""",
+        (user_id,),
+    ).fetchall()
+    rolls_by_format = [{"format": r["format"], "count": r["cnt"]} for r in rows]
+
+    # Rolls by type (color vs black_and_white)
+    rows = conn.execute(
+        """SELECT fs.type, COUNT(*) as cnt
+           FROM rolls r
+           JOIN film_stocks fs ON r.film_stock_id = fs.id
+           WHERE r.user_id = ?
+           GROUP BY fs.type""",
+        (user_id,),
+    ).fetchall()
+    rolls_by_type = [{"type": r["type"], "count": r["cnt"]} for r in rows]
+
+    # Top cameras by roll count
+    rows = conn.execute(
+        """SELECT c.name, COUNT(*) as cnt
+           FROM rolls r
+           JOIN cameras c ON r.camera_id = c.id
+           WHERE r.user_id = ? AND r.camera_id IS NOT NULL
+           GROUP BY r.camera_id
+           ORDER BY cnt DESC
+           LIMIT 5""",
+        (user_id,),
+    ).fetchall()
+    top_cameras = [{"name": r["name"], "count": r["cnt"]} for r in rows]
+
+    # Top lenses by frame count
+    rows = conn.execute(
+        """SELECT l.name, COUNT(*) as cnt
+           FROM frames f
+           JOIN lenses l ON f.lens_id = l.id
+           JOIN rolls r ON f.roll_id = r.id
+           WHERE r.user_id = ? AND f.lens_id IS NOT NULL
+           GROUP BY f.lens_id
+           ORDER BY cnt DESC
+           LIMIT 5""",
+        (user_id,),
+    ).fetchall()
+    top_lenses = [{"name": r["name"], "count": r["cnt"]} for r in rows]
+
+    # Development type split
+    rows = conn.execute(
+        """SELECT rd.dev_type, COUNT(*) as cnt
+           FROM roll_development rd
+           JOIN rolls r ON rd.roll_id = r.id
+           WHERE r.user_id = ?
+           GROUP BY rd.dev_type""",
+        (user_id,),
+    ).fetchall()
+    dev_type_split = {r["dev_type"]: r["cnt"] for r in rows}
+
+    # Total development cost
+    row = conn.execute(
+        """SELECT COALESCE(SUM(rd.cost_amount), 0) as total
+           FROM roll_development rd
+           JOIN rolls r ON rd.roll_id = r.id
+           WHERE r.user_id = ?""",
+        (user_id,),
+    ).fetchone()
+    total_dev_cost = float(row["total"])
+
+    # Rolls by month (last 12 months, based on loaded_date)
+    rows = conn.execute(
+        """SELECT strftime('%Y-%m', loaded_date) as month, COUNT(*) as cnt
+           FROM rolls
+           WHERE user_id = ? AND loaded_date IS NOT NULL
+           GROUP BY month
+           ORDER BY month DESC
+           LIMIT 12""",
+        (user_id,),
+    ).fetchall()
+    rolls_by_month = [{"month": r["month"], "count": r["cnt"]} for r in rows]
+
+    return {
+        "rolls_by_status": rolls_by_status,
+        "total_frames_logged": total_frames_logged,
+        "top_film_stocks": top_film_stocks,
+        "rolls_by_format": rolls_by_format,
+        "rolls_by_type": rolls_by_type,
+        "top_cameras": top_cameras,
+        "top_lenses": top_lenses,
+        "dev_type_split": dev_type_split,
+        "total_dev_cost": total_dev_cost,
+        "rolls_by_month": rolls_by_month,
+    }
 
 
 # --- Utility ---

@@ -340,11 +340,79 @@ class DevelopmentInfoModal(ModalScreen[None]):
                         yield Static("  ".join(parts), markup=False)
                     if dev.notes:
                         yield Static(f"Notes: {dev.notes}", markup=False)
+                if roll and roll.scan_date:
+                    yield Static(f"Scanned: {roll.scan_date}", markup=False)
+                    if roll.scan_notes:
+                        yield Static(f"Scan Notes: {roll.scan_notes}", markup=False)
             with Horizontal(classes="form-buttons"):
                 yield Button("Close", id="close-btn", variant="primary")
 
     @on(Button.Pressed, "#close-btn")
     def close(self) -> None:
+        self.dismiss(None)
+
+
+class ScanRollModal(ModalScreen[tuple[str, str] | None]):
+    """Record scan/digitization date and notes for a developed roll."""
+
+    CSS = """
+    ScanRollModal {
+        align: center middle;
+    }
+    #scan-form-box {
+        width: 60;
+        height: auto;
+        border: heavy $accent;
+        padding: 1 2;
+        background: $surface;
+    }
+    #scan-form-box Label {
+        margin: 1 0 0 0;
+    }
+    .form-buttons {
+        height: auto;
+        margin: 1 0 0 0;
+    }
+    .form-buttons Button {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(self, current_scan_date: str = "", current_scan_notes: str = ""):
+        super().__init__()
+        self._current_scan_date = current_scan_date
+        self._current_scan_notes = current_scan_notes
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="scan-form-box"):
+            yield Static("Scan / Digitize Roll", markup=False)
+            yield Label("Scan Date (YYYY-MM-DD)")
+            yield Input(
+                id="scan-date",
+                value=self._current_scan_date,
+                placeholder="Leave blank for today",
+            )
+            yield Label("Scan Notes")
+            yield Input(id="scan-notes", value=self._current_scan_notes)
+            with Horizontal(classes="form-buttons"):
+                yield Button("Save", id="save-btn", variant="primary")
+                yield Button("Cancel", id="cancel-btn")
+
+    @on(Button.Pressed, "#save-btn")
+    def save(self) -> None:
+        date_str = self.query_one("#scan-date", Input).value.strip()
+        if not date_str:
+            date_str = str(date.today())
+        try:
+            date.fromisoformat(date_str)
+        except ValueError:
+            app_error(self, ErrorCode.VAL_DATE)
+            return
+        notes = self.query_one("#scan-notes", Input).value.strip()
+        self.dismiss((date_str, notes))
+
+    @on(Button.Pressed, "#cancel-btn")
+    def cancel(self) -> None:
         self.dismiss(None)
 
 
@@ -503,6 +571,7 @@ class RollsScreen(Screen):
         ("s", "advance_status", "Advance Status"),
         ("f", "view_frames", "Frames"),
         ("i", "view_dev_info", "Dev Info"),
+        ("c", "scan_roll", "Scan"),
         ("d", "delete", "Delete"),
         ("escape", "go_back", "Back"),
     ]
@@ -545,6 +614,7 @@ class RollsScreen(Screen):
             yield Button("Advance Status [s]", id="advance-btn")
             yield Button("Frames [f]", id="frames-btn")
             yield Button("Dev Info [i]", id="dev-info-btn")
+            yield Button("Scan [c]", id="scan-btn")
             yield Button("Delete [d]", id="del-btn", variant="error")
             yield Button("Back [Esc]", id="back-btn")
         yield Footer()
@@ -576,8 +646,11 @@ class RollsScreen(Screen):
                     pp = f"{r.push_pull_stops:g}"
                 else:
                     pp = ""
+                status_display = r.status
+                if r.status == "developed" and r.scan_date:
+                    status_display = "developed [S]"
                 table.add_row(
-                    title, stock_name, camera_name, r.status,
+                    title, stock_name, camera_name, status_display,
                     pp, str(r.loaded_date or ""), r.notes,
                     key=str(r.id),
                 )
@@ -745,6 +818,34 @@ class RollsScreen(Screen):
         if roll_id is None:
             return
         self.app.push_screen(DevelopmentInfoModal(roll_id))
+
+    @on(Button.Pressed, "#scan-btn")
+    def action_scan_roll(self) -> None:
+        roll_id = self._get_selected_id()
+        if roll_id is None:
+            return
+        roll = db.get_roll(self.app.db_conn, roll_id)
+        if not roll or roll.status != "developed":
+            return
+        current_date = str(roll.scan_date) if roll.scan_date else ""
+        current_notes = roll.scan_notes or ""
+
+        def on_result(result: tuple[str, str] | None) -> None:
+            if result is None:
+                return
+            date_str, notes = result
+            try:
+                roll.scan_date = date_str
+                roll.scan_notes = notes
+                db.update_roll(self.app.db_conn, roll)
+                self._refresh()
+            except Exception:
+                app_error(self, ErrorCode.DB_SAVE)
+
+        self.app.push_screen(
+            ScanRollModal(current_scan_date=current_date, current_scan_notes=current_notes),
+            on_result,
+        )
 
     @on(Button.Pressed, "#del-btn")
     def action_delete(self) -> None:

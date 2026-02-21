@@ -114,6 +114,14 @@ class TestRollModel:
         roll = Roll()
         assert roll.push_pull_stops == 0.0
 
+    def test_scan_date_default(self):
+        roll = Roll()
+        assert roll.scan_date is None
+
+    def test_scan_notes_default(self):
+        roll = Roll()
+        assert roll.scan_notes == ""
+
     def test_with_title_and_push_pull(self):
         roll = Roll(title="Vacation Roll", push_pull_stops=1.0)
         assert roll.title == "Vacation Roll"

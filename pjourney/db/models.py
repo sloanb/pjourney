@@ -102,6 +102,8 @@ class Roll:
     notes: str = ""
     title: str = ""
     push_pull_stops: float = 0.0
+    scan_date: date | None = None
+    scan_notes: str = ""
     created_at: datetime | None = None
 
 
