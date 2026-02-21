@@ -50,6 +50,7 @@ At a glance the Dashboard shows you:
 | `l` | Lenses |
 | `f` | Film Stock |
 | `r` | Rolls |
+| `s` | Stats |
 | `a` | Admin |
 | `q` | Quit |
 
@@ -215,7 +216,7 @@ Once your gear is set up, here is the full workflow for tracking a roll of film 
 
 Press `r` from the Dashboard to open the Rolls screen, then press `n` (New Roll).
 
-Select the film stock from the dropdown. Optionally give the roll a **Title** (e.g. "Paris trip", "Studio portraits") — if left blank, the roll is displayed as "Roll #N". Add any notes (batch number, where you bought it, etc.). Press **Create**.
+Select the film stock from the dropdown. Optionally give the roll a **Title** (e.g. "Paris trip", "Studio portraits") — if left blank, the roll is displayed as "Roll #N". Optionally set a **Location** (e.g. "Paris", "Studio") to record where you are shooting this roll. Add any notes (batch number, where you bought it, etc.). Press **Create**.
 
 pjourney automatically creates frame entries based on the number of frames defined in your film stock. A fresh roll starts with the status **Fresh**.
 
@@ -225,7 +226,7 @@ pjourney automatically creates frame entries based on the number of frames defin
 
 Select your fresh roll and press `l` (Load).
 
-Choose your camera from the dropdown. Optionally choose a default lens — this will pre-populate all of your frame records with that lens, saving you time when logging shots later. Set the **Push/Pull (stops)** value if you plan to expose the film at a rating other than box speed (e.g. +1 to push one stop, -1 to pull one stop). The default is 0 (box speed). This is recorded on the roll and shown in the Rolls table and the Dev Info modal.
+Choose your camera from the dropdown. Optionally choose a default lens — this will pre-populate all of your frame records with that lens, saving you time when logging shots later. Set the **Push/Pull (stops)** value if you plan to expose the film at a rating other than box speed (e.g. +1 to push one stop, -1 to pull one stop). The default is 0 (box speed). This is recorded on the roll and shown in the Rolls table and the Dev Info modal. Optionally set a **Location** if you want to update where the roll is being shot.
 
 After loading, the roll status advances to **Loaded** and the load date is recorded.
 
@@ -267,7 +268,7 @@ When you have exposed all the frames and rewound the film, select the roll and p
 
 When you are ready to develop the roll, press `s`. pjourney asks how the roll will be developed:
 
-- **Self Develop** — opens a form to record the process type (B&W, C-41, E-6, etc.) and each development step (chemical, temperature, time, agitation). After pressing **Save**, the roll advances directly to **Developed** in one step — the Developing stage is skipped because you process the roll yourself and the result is immediate.
+- **Self Develop** — opens a form to record the process type (B&W, C-41, E-6, etc.) and each development step (chemical, temperature, time, agitation). Press **Load Recipe** to pre-populate the steps from a saved development recipe template. After pressing **Save**, the roll advances directly to **Developed** in one step — the Developing stage is skipped because you process the roll yourself and the result is immediate.
 - **Send to Lab** — opens a form to record the lab name, contact details, and cost. After pressing **Save**, the status advances to **Developing** and the sent-for-development date is recorded.
 - **Cancel** — returns to the Rolls screen without advancing the status.
 
@@ -319,6 +320,35 @@ Do this before making large changes or periodically as a precaution.
 
 Press **Vacuum Database** to optimise your database file. This reclaims space after deletions and keeps things tidy. It is safe to run at any time.
 
+### Export Data (CSV)
+
+Press **Export Data (CSV)** to save two CSV files to your home directory:
+
+- `pjourney-export-rolls-YYYY-MM-DD.csv` — all rolls with their film stock, camera, lens, status, location, push/pull, and dates
+- `pjourney-export-frames-YYYY-MM-DD.csv` — all frame records with subject, aperture, shutter speed, lens, date, and location
+
+These files can be opened in any spreadsheet application for analysis or archiving.
+
+### Development Recipes
+
+The Development Recipes section lets you save reusable step-by-step development processes that you can load into the Self Develop form when processing a roll.
+
+**Creating a recipe**
+
+Press **Create Recipe** to open the recipe form. Give the recipe a name (e.g. "HP5 in Rodinal 1+50"), choose the process type (B&W, C-41, E-6, etc.), and add each development step with a chemical name, temperature, duration, agitation notes, and any step notes. Press **Save** when done.
+
+**Editing a recipe**
+
+Select a recipe and press **Edit Recipe** to update its name, process type, notes, or steps.
+
+**Deleting a recipe**
+
+Select a recipe and press **Delete Recipe**. Deleting a recipe does not affect any development records already saved against rolls.
+
+**Using a recipe when developing a roll**
+
+When you self-develop a roll (Step 6), the Self Develop form has a **Load Recipe** button. Select a recipe to pre-populate the process type and steps. You can then adjust any values before saving.
+
 ### Cloud Sync (Dropbox)
 
 The Cloud Sync section lets you back up and restore your database to and from Dropbox.
@@ -365,6 +395,7 @@ Press **Disconnect** to revoke pjourney's Dropbox access and remove stored crede
 | Dashboard | `l` | Go to Lenses |
 | Dashboard | `f` | Go to Film Stock |
 | Dashboard | `r` | Go to Rolls |
+| Dashboard | `s` | Go to Stats |
 | Dashboard | `a` | Go to Admin |
 | Dashboard | `q` | Quit |
 | Any screen | `Esc` | Go back |
@@ -398,6 +429,7 @@ Press **Disconnect** to revoke pjourney's Dropbox access and remove stored crede
 | `s` | Advance roll status |
 | `f` | View frames for this roll |
 | `i` | View development info |
+| `c` | Record scan / digitization info |
 | `d` | Delete roll |
 
 ### Camera Issues

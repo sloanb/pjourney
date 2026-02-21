@@ -43,20 +43,22 @@ pjourney/
   errors.py               — ErrorCode enum and app_error() toast helper
   db/
     database.py           — Schema, migrations, all CRUD functions
-    models.py             — Dataclasses (Camera, Lens, FilmStock, Roll, Frame, CloudSettings, …)
+    models.py             — Dataclasses (Camera, Lens, FilmStock, Roll, Frame, CloudSettings, DevRecipe, DevRecipeStep, …)
   screens/
     login.py              — Login / account creation
     dashboard.py          — Home screen with inventory stats, loaded cameras, and low-stock film alerts
     cameras.py            — Camera list, edit form, issue/maintenance log
     lenses.py             — Lens list, edit form, per-lens notes
     film_stock.py         — Film stock catalogue
-    rolls.py              — Roll lifecycle management, frame access; rolls have title and push/pull tracking
+    rolls.py              — Roll lifecycle management, frame access; rolls have title, location, and push/pull tracking
     frames.py             — Per-frame shooting details
-    admin.py              — DB backup/vacuum, cloud sync, and user management
+    stats.py              — StatsScreen: roll overview, film usage, top shooting locations, equipment usage, activity
+    admin.py              — DB backup/vacuum/CSV export, cloud sync, development recipe management, and user management
   widgets/
     inventory_table.py    — Shared DataTable with vim-style navigation
     app_header.py         — Common screen header
     confirm_modal.py      — Reusable delete confirmation modal
+  export.py               — export_rolls_csv() and export_frames_csv() functions
   cloud/
     provider.py           — CloudProvider ABC, CloudProviderError, shared dataclasses
     credentials.py        — CredentialStore (OS keyring wrapper)
@@ -64,8 +66,8 @@ pjourney/
 docs/
   ERROR_CODES.md          — User-facing error code reference
 tests/
-  test_database.py        — CRUD and schema tests (80 tests)
-  test_models.py          — Dataclass default/value tests (25 tests)
+  test_database.py        — CRUD and schema tests (120 tests)
+  test_models.py          — Dataclass default/value tests (33 tests)
   test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests (16 tests)
   test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests (9 tests)
   test_errors.py          — ErrorCode enum and app_error() helper tests (14 tests)
@@ -75,7 +77,13 @@ tests/
   test_cloud_provider.py  — CloudProvider ABC and CredentialStore tests (11 tests)
   test_dropbox_provider.py — DropboxProvider tests with mocked SDK (25 tests)
   test_cloud_modals.py    — Cloud admin modal tests (22 tests)
+  test_scan_modal.py      — ScanRollModal tests (7 tests)
+  test_stats_screen.py    — StatsScreen tests (6 tests)
+  test_recipe_modals.py   — RecipeFormModal and RecipePickerModal tests (14 tests)
+  test_export.py          — CSV export function tests (10 tests)
 ```
+
+**323 total tests**
 
 ## Roll Lifecycle
 
@@ -95,3 +103,4 @@ When advancing from Finished, the user chooses a development path: **Lab Develop
 - Passwords hashed with **argon2-cffi**; rehash-on-verify is supported
 - Screen-to-screen data passing uses app-level instance variables (`_camera_detail_id`, `_lens_detail_id`, `_frames_roll_id`)
 - Cloud sync uses PKCE OAuth (no client secret) via the Dropbox SDK; tokens are stored in the OS keyring via `keyring`; Dropbox API calls run off the main thread with `asyncio.to_thread` to keep the TUI responsive
+- SQLite `date`/`datetime` adapters are registered at module level in `database.py` to suppress Python 3.12+ deprecation warnings
