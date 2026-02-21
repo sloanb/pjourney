@@ -75,6 +75,22 @@ class DashboardScreen(Screen):
     #loaded-section .loaded-item {
         padding: 0 2;
     }
+    #low-stock-section {
+        height: auto;
+        padding: 1 2;
+    }
+    .low-stock-header {
+        color: $warning;
+        text-style: bold;
+    }
+    .low-stock-item {
+        padding: 0 2;
+        color: $warning;
+    }
+    .out-of-stock-item {
+        padding: 0 2;
+        color: $error;
+    }
     #nav-row {
         height: auto;
         padding: 1 2;
@@ -113,6 +129,9 @@ class DashboardScreen(Screen):
         with Vertical(id="loaded-section"):
             yield Static("Currently Loaded Cameras", markup=False)
             yield Vertical(id="loaded-list")
+        with Vertical(id="low-stock-section"):
+            yield Static("Film Stock Alerts", classes="low-stock-header", markup=False)
+            yield Vertical(id="low-stock-list")
         with Horizontal(id="nav-row"):
             yield Button("Cameras [c]", id="btn-cameras")
             yield Button("Lenses [l]", id="btn-lenses")
@@ -156,6 +175,30 @@ class DashboardScreen(Screen):
                     )
             else:
                 loaded_list.mount(Static("  No cameras currently loaded", markup=False))
+
+            alerts = db.get_low_stock_items(conn, user_id)
+            low_stock_section = self.query_one("#low-stock-section", Vertical)
+            low_stock_list = self.query_one("#low-stock-list", Vertical)
+            low_stock_list.remove_children()
+            has_alerts = alerts["out_of_stock"] or alerts["low_stock"]
+            low_stock_section.display = has_alerts
+            if has_alerts:
+                for item in alerts["out_of_stock"]:
+                    low_stock_list.mount(
+                        Static(
+                            f"  OUT OF STOCK: {item['brand']} {item['name']}",
+                            classes="out-of-stock-item",
+                            markup=False,
+                        )
+                    )
+                for item in alerts["low_stock"]:
+                    low_stock_list.mount(
+                        Static(
+                            f"  Low Stock: {item['brand']} {item['name']} ({item['quantity']} remaining)",
+                            classes="low-stock-item",
+                            markup=False,
+                        )
+                    )
         except Exception:
             app_error(self, ErrorCode.DB_LOAD)
 

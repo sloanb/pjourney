@@ -195,6 +195,16 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    for col, definition in [
+        ("title", "TEXT NOT NULL DEFAULT ''"),
+        ("push_pull_stops", "REAL NOT NULL DEFAULT 0.0"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE rolls ADD COLUMN {col} {definition}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
 
 def _ensure_default_user(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
@@ -487,11 +497,11 @@ def create_roll(conn: sqlite3.Connection, roll: Roll, frames_per_roll: int) -> R
     cur = conn.execute(
         """INSERT INTO rolls (user_id, film_stock_id, camera_id, lens_id, status,
            loaded_date, finished_date, sent_for_dev_date, developed_date,
-           notes, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           notes, title, push_pull_stops, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (roll.user_id, roll.film_stock_id, roll.camera_id, roll.lens_id, roll.status,
          roll.loaded_date, roll.finished_date, roll.sent_for_dev_date,
-         roll.developed_date, roll.notes, now),
+         roll.developed_date, roll.notes, roll.title, roll.push_pull_stops, now),
     )
     roll_id = cur.lastrowid
     # Pre-populate frames, seeding with roll's default lens if set.
@@ -514,10 +524,10 @@ def update_roll(conn: sqlite3.Connection, roll: Roll) -> Roll:
     conn.execute(
         """UPDATE rolls SET film_stock_id=?, camera_id=?, lens_id=?, status=?,
            loaded_date=?, finished_date=?, sent_for_dev_date=?,
-           developed_date=?, notes=? WHERE id=?""",
+           developed_date=?, notes=?, title=?, push_pull_stops=? WHERE id=?""",
         (roll.film_stock_id, roll.camera_id, roll.lens_id, roll.status,
          roll.loaded_date, roll.finished_date, roll.sent_for_dev_date,
-         roll.developed_date, roll.notes, roll.id),
+         roll.developed_date, roll.notes, roll.title, roll.push_pull_stops, roll.id),
     )
     conn.commit()
     return get_roll(conn, roll.id)
@@ -654,6 +664,28 @@ def save_cloud_settings(conn: sqlite3.Connection, settings: CloudSettings) -> Cl
 def delete_cloud_settings(conn: sqlite3.Connection, user_id: int) -> None:
     conn.execute("DELETE FROM cloud_settings WHERE user_id = ?", (user_id,))
     conn.commit()
+
+
+# --- Film Stock Alerts ---
+
+def get_low_stock_items(conn: sqlite3.Connection, user_id: int, threshold: int = 2) -> dict[str, list[dict]]:
+    """Return analog film stocks that are low or out of stock."""
+    rows = conn.execute(
+        """SELECT brand, name, quantity_on_hand
+           FROM film_stocks
+           WHERE user_id = ? AND media_type = 'analog' AND quantity_on_hand <= ?
+           ORDER BY quantity_on_hand, brand, name""",
+        (user_id, threshold),
+    ).fetchall()
+    low_stock = []
+    out_of_stock = []
+    for r in rows:
+        item = {"brand": r["brand"], "name": r["name"], "quantity": r["quantity_on_hand"]}
+        if r["quantity_on_hand"] == 0:
+            out_of_stock.append(item)
+        else:
+            low_stock.append(item)
+    return {"low_stock": low_stock, "out_of_stock": out_of_stock}
 
 
 # --- Utility ---

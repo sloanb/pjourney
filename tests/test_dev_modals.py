@@ -448,3 +448,30 @@ class TestSelfDevelopAdvancement:
             updated = db.get_roll(conn, roll.id)
             assert updated.status == "finished"
             assert updated.developed_date is None
+
+
+# ---------------------------------------------------------------------------
+# DevelopmentInfoModal push/pull display
+# ---------------------------------------------------------------------------
+
+class TestDevelopmentInfoModalPushPull:
+    def _make_roll_with_push_pull(self, conn, push_pull_stops):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5", frames_per_roll=36,
+        ))
+        roll = db.create_roll(
+            conn,
+            Roll(user_id=user.id, film_stock_id=stock.id, push_pull_stops=push_pull_stops),
+            36,
+        )
+        return roll
+
+    async def test_push_pull_displayed_in_dev_info(self, conn):
+        roll = self._make_roll_with_push_pull(conn, 2.0)
+        app = DevInfoModalTestApp(conn)
+        async with app.run_test() as pilot:
+            await app.push_screen(DevelopmentInfoModal(roll.id))
+            from textual.widgets import Static
+            statics = [_static_text(s) for s in app.screen.query(Static)]
+            assert any("Push 2 stop(s)" in s for s in statics)

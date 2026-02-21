@@ -153,10 +153,17 @@ class FramesScreen(Screen):
             camera = db.get_camera(conn, roll.camera_id) if roll.camera_id else None
             camera_name = camera.name if camera else "Not loaded"
 
+            title = roll.title if roll.title else f"Roll #{roll.id}"
+            line2 = f"Camera: {camera_name}  Status: {roll.status}"
+            if roll.push_pull_stops > 0:
+                line2 += f"  Push +{roll.push_pull_stops:g}"
+            elif roll.push_pull_stops < 0:
+                line2 += f"  Pull {roll.push_pull_stops:g}"
+
             info = self.query_one("#roll-info", Vertical)
             info.remove_children()
-            info.mount(Static(f"Roll #{roll.id} — {stock_name}", markup=False))
-            info.mount(Static(f"Camera: {camera_name}  Status: {roll.status}", markup=False))
+            info.mount(Static(f"{title} — {stock_name}", markup=False))
+            info.mount(Static(line2, markup=False))
 
             table = self.query_one("#frame-table", InventoryTable)
             table.clear()

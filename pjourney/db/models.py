@@ -100,6 +100,8 @@ class Roll:
     sent_for_dev_date: date | None = None
     developed_date: date | None = None
     notes: str = ""
+    title: str = ""
+    push_pull_stops: float = 0.0
     created_at: datetime | None = None
 
 

@@ -903,3 +903,121 @@ class TestGetRollsWithStatusFilter:
 
         developed_rolls = db.get_rolls(conn, user.id, status="developed")
         assert developed_rolls == []
+
+
+# ---------------------------------------------------------------------------
+# Roll title and push/pull CRUD
+# ---------------------------------------------------------------------------
+
+class TestRollTitleAndPushPull:
+    def test_create_roll_with_title(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        roll = Roll(user_id=user.id, film_stock_id=stock.id, title="Vacation Roll")
+        saved = db.create_roll(conn, roll, 36)
+        assert saved.title == "Vacation Roll"
+
+    def test_create_roll_with_push_pull(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5", frames_per_roll=36,
+        ))
+        roll = Roll(user_id=user.id, film_stock_id=stock.id, push_pull_stops=2.0)
+        saved = db.create_roll(conn, roll, 36)
+        assert saved.push_pull_stops == 2.0
+
+    def test_create_roll_defaults_title_and_push_pull(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Fuji", name="Superia 400", frames_per_roll=24,
+        ))
+        roll = Roll(user_id=user.id, film_stock_id=stock.id)
+        saved = db.create_roll(conn, roll, 24)
+        assert saved.title == ""
+        assert saved.push_pull_stops == 0.0
+
+    def test_update_roll_title(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Tri-X", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll.title = "Street Photography"
+        updated = db.update_roll(conn, roll)
+        assert updated.title == "Street Photography"
+
+    def test_update_roll_push_pull(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="Delta 3200", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll.push_pull_stops = -1.0
+        updated = db.update_roll(conn, roll)
+        assert updated.push_pull_stops == -1.0
+
+
+# ---------------------------------------------------------------------------
+# get_low_stock_items
+# ---------------------------------------------------------------------------
+
+class TestGetLowStockItems:
+    def test_low_stock_items_returned(self, conn):
+        user = db.get_users(conn)[0]
+        db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400",
+            media_type="analog", quantity_on_hand=2,
+        ))
+        result = db.get_low_stock_items(conn, user.id)
+        assert len(result["low_stock"]) == 1
+        assert result["low_stock"][0]["brand"] == "Kodak"
+        assert result["low_stock"][0]["quantity"] == 2
+
+    def test_out_of_stock_items_returned(self, conn):
+        user = db.get_users(conn)[0]
+        db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5",
+            media_type="analog", quantity_on_hand=0,
+        ))
+        result = db.get_low_stock_items(conn, user.id)
+        assert len(result["out_of_stock"]) == 1
+        assert result["out_of_stock"][0]["brand"] == "Ilford"
+
+    def test_well_stocked_items_excluded(self, conn):
+        user = db.get_users(conn)[0]
+        db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Gold 200",
+            media_type="analog", quantity_on_hand=10,
+        ))
+        result = db.get_low_stock_items(conn, user.id)
+        assert result["low_stock"] == []
+        assert result["out_of_stock"] == []
+
+    def test_digital_stocks_excluded(self, conn):
+        user = db.get_users(conn)[0]
+        db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="SanDisk", name="SD Card",
+            media_type="digital", quantity_on_hand=1,
+        ))
+        result = db.get_low_stock_items(conn, user.id)
+        assert result["low_stock"] == []
+        assert result["out_of_stock"] == []
+
+    def test_custom_threshold(self, conn):
+        user = db.get_users(conn)[0]
+        db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 800",
+            media_type="analog", quantity_on_hand=5,
+        ))
+        result = db.get_low_stock_items(conn, user.id, threshold=5)
+        assert len(result["low_stock"]) == 1
+        result2 = db.get_low_stock_items(conn, user.id, threshold=2)
+        assert result2["low_stock"] == []
+
+    def test_empty_database(self, conn):
+        user = db.get_users(conn)[0]
+        result = db.get_low_stock_items(conn, user.id)
+        assert result["low_stock"] == []
+        assert result["out_of_stock"] == []

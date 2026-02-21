@@ -106,6 +106,19 @@ class TestRollModel:
         assert roll.camera_id is None
         assert roll.loaded_date is None
 
+    def test_title_default(self):
+        roll = Roll()
+        assert roll.title == ""
+
+    def test_push_pull_stops_default(self):
+        roll = Roll()
+        assert roll.push_pull_stops == 0.0
+
+    def test_with_title_and_push_pull(self):
+        roll = Roll(title="Vacation Roll", push_pull_stops=1.0)
+        assert roll.title == "Vacation Roll"
+        assert roll.push_pull_stops == 1.0
+
     def test_statuses(self):
         assert "fresh" in ROLL_STATUSES
         assert "loaded" in ROLL_STATUSES

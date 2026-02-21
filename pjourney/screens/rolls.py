@@ -304,9 +304,14 @@ class DevelopmentInfoModal(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         dev = db.get_roll_development_by_roll(self.app.db_conn, self._roll_id)
+        roll = db.get_roll(self.app.db_conn, self._roll_id)
         with Vertical(id="info-box"):
             yield Static("Development Info", markup=False)
             with VerticalScroll(id="info-scroll"):
+                if roll and roll.push_pull_stops != 0.0:
+                    stops = roll.push_pull_stops
+                    direction = "Push" if stops > 0 else "Pull"
+                    yield Static(f"{direction} {abs(stops):g} stop(s)", markup=False)
                 if dev is None:
                     yield Static("This film has not yet been developed.", markup=False)
                 elif dev.dev_type == "lab":
@@ -343,7 +348,7 @@ class DevelopmentInfoModal(ModalScreen[None]):
         self.dismiss(None)
 
 
-class CreateRollModal(ModalScreen[tuple[int, str] | None]):
+class CreateRollModal(ModalScreen[tuple[int, str, str] | None]):
     """Select a film stock and create a new roll."""
 
     CSS = """
@@ -387,6 +392,8 @@ class CreateRollModal(ModalScreen[tuple[int, str] | None]):
                 yield Select(options, id="stock-select")
             else:
                 yield Static("No film stocks available. Add one first.", markup=False)
+            yield Label("Title (optional)")
+            yield Input(id="title", max_length=60)
             yield Label("Notes")
             yield Input(id="notes")
             with Horizontal(classes="form-buttons"):
@@ -401,15 +408,16 @@ class CreateRollModal(ModalScreen[tuple[int, str] | None]):
                 return
         except Exception:
             return
+        title = self.query_one("#title", Input).value.strip()
         notes = self.query_one("#notes", Input).value.strip()
-        self.dismiss((stock_id, notes))
+        self.dismiss((stock_id, notes, title))
 
     @on(Button.Pressed, "#cancel-btn")
     def cancel(self) -> None:
         self.dismiss(None)
 
 
-class LoadRollModal(ModalScreen[tuple[int, int | None] | None]):
+class LoadRollModal(ModalScreen[tuple[int, int | None, float] | None]):
     """Select a camera and optional lens to load a roll into."""
 
     CSS = """
@@ -435,11 +443,25 @@ class LoadRollModal(ModalScreen[tuple[int, int | None] | None]):
     }
     """
 
+    def __init__(self, current_push_pull: float = 0.0):
+        super().__init__()
+        self._current_push_pull = current_push_pull
+
     def compose(self) -> ComposeResult:
         cameras = db.get_cameras(self.app.db_conn, self.app.current_user.id)
         camera_options = [(f"{c.name} ({c.make} {c.model})", c.id) for c in cameras]
         lenses = db.get_lenses(self.app.db_conn, self.app.current_user.id)
         lens_options = [("None", 0)] + [(f"{l.name} ({l.focal_length})", l.id) for l in lenses]
+        push_pull_options = []
+        for i in range(-6, 7):
+            val = i * 0.5
+            if val == 0.0:
+                label = "0 (Box Speed)"
+            elif val > 0:
+                label = f"+{val:g}"
+            else:
+                label = f"{val:g}"
+            push_pull_options.append((label, val))
         with Vertical(id="form-box"):
             yield Static("Load Roll into Camera", markup=False)
             yield Label("Camera")
@@ -449,6 +471,8 @@ class LoadRollModal(ModalScreen[tuple[int, int | None] | None]):
                 yield Static("No cameras available. Add one first.", markup=False)
             yield Label("Lens (installed on camera)")
             yield Select(lens_options, value=0, id="lens-select")
+            yield Label("Push/Pull (stops)")
+            yield Select(push_pull_options, value=self._current_push_pull, id="push-pull-select")
             with Horizontal(classes="form-buttons"):
                 yield Button("Load", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -463,7 +487,9 @@ class LoadRollModal(ModalScreen[tuple[int, int | None] | None]):
             return
         lens_val = self.query_one("#lens-select", Select).value
         lens_id = lens_val if lens_val and lens_val != 0 else None
-        self.dismiss((camera_id, lens_id))
+        push_pull_val = self.query_one("#push-pull-select", Select).value
+        push_pull = float(push_pull_val) if push_pull_val is not Select.NULL else 0.0
+        self.dismiss((camera_id, lens_id, push_pull))
 
     @on(Button.Pressed, "#cancel-btn")
     def cancel(self) -> None:
@@ -525,7 +551,7 @@ class RollsScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#roll-table", InventoryTable)
-        table.add_columns("ID", "Film Stock", "Camera", "Status", "Loaded", "Notes")
+        table.add_columns("Title", "Film Stock", "Camera", "Status", "Push/Pull", "Loaded", "Notes")
         self._refresh()
 
     def on_screen_resume(self) -> None:
@@ -543,9 +569,16 @@ class RollsScreen(Screen):
                 stock_name = f"{stock.brand} {stock.name}" if stock else "?"
                 camera = db.get_camera(conn, r.camera_id) if r.camera_id else None
                 camera_name = camera.name if camera else ""
+                title = r.title if r.title else f"Roll #{r.id}"
+                if r.push_pull_stops > 0:
+                    pp = f"+{r.push_pull_stops:g}"
+                elif r.push_pull_stops < 0:
+                    pp = f"{r.push_pull_stops:g}"
+                else:
+                    pp = ""
                 table.add_row(
-                    str(r.id), stock_name, camera_name, r.status,
-                    str(r.loaded_date or ""), r.notes,
+                    title, stock_name, camera_name, r.status,
+                    pp, str(r.loaded_date or ""), r.notes,
                     key=str(r.id),
                 )
         except Exception:
@@ -595,10 +628,10 @@ class RollsScreen(Screen):
 
     @on(Button.Pressed, "#new-btn")
     def action_new_roll(self) -> None:
-        def on_result(result: tuple[int, str] | None) -> None:
+        def on_result(result: tuple[int, str, str] | None) -> None:
             if result is None:
                 return
-            stock_id, notes = result
+            stock_id, notes, title = result
             try:
                 stock = db.get_film_stock(self.app.db_conn, stock_id)
                 if not stock:
@@ -607,6 +640,7 @@ class RollsScreen(Screen):
                     user_id=self.app.current_user.id,
                     film_stock_id=stock_id,
                     notes=notes,
+                    title=title,
                 )
                 db.create_roll(self.app.db_conn, roll, stock.frames_per_roll)
                 self._refresh()
@@ -623,13 +657,14 @@ class RollsScreen(Screen):
         if not roll or roll.status != "fresh":
             return
 
-        def on_result(result: tuple[int, int | None] | None) -> None:
+        def on_result(result: tuple[int, int | None, float] | None) -> None:
             if result is None:
                 return
-            camera_id, lens_id = result
+            camera_id, lens_id, push_pull = result
             try:
                 roll.camera_id = camera_id
                 roll.lens_id = lens_id
+                roll.push_pull_stops = push_pull
                 roll.status = "loaded"
                 roll.loaded_date = date.today()
                 db.update_roll(self.app.db_conn, roll)
@@ -637,7 +672,7 @@ class RollsScreen(Screen):
                 self._refresh()
             except Exception:
                 app_error(self, ErrorCode.DB_SAVE)
-        self.app.push_screen(LoadRollModal(), on_result)
+        self.app.push_screen(LoadRollModal(current_push_pull=roll.push_pull_stops), on_result)
 
     @on(Button.Pressed, "#advance-btn")
     def action_advance_status(self) -> None:
