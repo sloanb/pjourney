@@ -46,11 +46,11 @@ pjourney/
     models.py             — Dataclasses (Camera, Lens, FilmStock, Roll, Frame, CloudSettings, …)
   screens/
     login.py              — Login / account creation
-    dashboard.py          — Home screen with inventory stats and loaded cameras
+    dashboard.py          — Home screen with inventory stats, loaded cameras, and low-stock film alerts
     cameras.py            — Camera list, edit form, issue/maintenance log
     lenses.py             — Lens list, edit form, per-lens notes
     film_stock.py         — Film stock catalogue
-    rolls.py              — Roll lifecycle management and frame access
+    rolls.py              — Roll lifecycle management, frame access; rolls have title and push/pull tracking
     frames.py             — Per-frame shooting details
     admin.py              — DB backup/vacuum, cloud sync, and user management
   widgets/
@@ -64,12 +64,12 @@ pjourney/
 docs/
   ERROR_CODES.md          — User-facing error code reference
 tests/
-  test_database.py        — CRUD and schema tests (68 tests)
-  test_models.py          — Dataclass default/value tests (22 tests)
+  test_database.py        — CRUD and schema tests (79 tests)
+  test_models.py          — Dataclass default/value tests (25 tests)
   test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests (16 tests)
   test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests (9 tests)
   test_errors.py          — ErrorCode enum and app_error() helper tests (14 tests)
-  test_dev_modals.py      — Development flow modal tests (27 tests)
+  test_dev_modals.py      — Development flow modal tests (28 tests)
   test_cloud_settings.py  — cloud_settings DB CRUD tests (6 tests)
   test_cloud_provider.py  — CloudProvider ABC and CredentialStore tests (11 tests)
   test_dropbox_provider.py — DropboxProvider tests with mocked SDK (25 tests)

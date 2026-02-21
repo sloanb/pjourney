@@ -40,6 +40,7 @@ At a glance the Dashboard shows you:
 - **Inventory counts** — how many cameras, lenses, film stocks, and rolls you have recorded
 - **Most-used gear** — the camera, lens, and film stock you have reached for most often
 - **Currently loaded cameras** — any cameras with film actively loaded or being shot
+- **Film stock alerts** — analog stocks that are low (2 or fewer rolls remaining) or completely out of stock, highlighted in the Film Stock Alerts section (hidden when all stocks are well-stocked)
 
 ### Navigating from the Dashboard
 
@@ -214,7 +215,7 @@ Once your gear is set up, here is the full workflow for tracking a roll of film 
 
 Press `r` from the Dashboard to open the Rolls screen, then press `n` (New Roll).
 
-Select the film stock from the dropdown and add any notes (batch number, where you bought it, etc.). Press **Create**.
+Select the film stock from the dropdown. Optionally give the roll a **Title** (e.g. "Paris trip", "Studio portraits") — if left blank, the roll is displayed as "Roll #N". Add any notes (batch number, where you bought it, etc.). Press **Create**.
 
 pjourney automatically creates frame entries based on the number of frames defined in your film stock. A fresh roll starts with the status **Fresh**.
 
@@ -224,7 +225,7 @@ pjourney automatically creates frame entries based on the number of frames defin
 
 Select your fresh roll and press `l` (Load).
 
-Choose your camera from the dropdown. Optionally choose a default lens — this will pre-populate all of your frame records with that lens, saving you time when logging shots later.
+Choose your camera from the dropdown. Optionally choose a default lens — this will pre-populate all of your frame records with that lens, saving you time when logging shots later. Set the **Push/Pull (stops)** value if you plan to expose the film at a rating other than box speed (e.g. +1 to push one stop, -1 to pull one stop). The default is 0 (box speed). This is recorded on the roll and shown in the Rolls table and the Dev Info modal.
 
 After loading, the roll status advances to **Loaded** and the load date is recorded.
 
@@ -270,7 +271,7 @@ When you are ready to develop the roll, press `s`. pjourney asks how the roll wi
 - **Send to Lab** — opens a form to record the lab name, contact details, and cost. After pressing **Save**, the status advances to **Developing** and the sent-for-development date is recorded.
 - **Cancel** — returns to the Rolls screen without advancing the status.
 
-To review development details later, select the roll and press `i` (Dev Info).
+To review development details later, select the roll and press `i` (Dev Info). If a push/pull value was set, it is shown at the top of the Dev Info modal before the development type details.
 
 ---
 
