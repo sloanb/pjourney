@@ -6,9 +6,13 @@ from pathlib import Path
 
 from argon2 import PasswordHasher
 
-from .models import Camera, CameraIssue, CloudSettings, DevelopmentStep, FilmStock, Frame, Lens, LensNote, Roll, RollDevelopment, User
+from .models import Camera, CameraIssue, CloudSettings, DevRecipe, DevRecipeStep, DevelopmentStep, FilmStock, Frame, Lens, LensNote, Roll, RollDevelopment, User
 
 DB_PATH = Path.home() / ".pjourney" / "pjourney.db"
+
+# Suppress Python 3.12+ deprecation warning for date/datetime binding
+sqlite3.register_adapter(date, lambda d: d.isoformat())
+sqlite3.register_adapter(datetime, lambda dt: dt.isoformat())
 
 ph = PasswordHasher()
 
@@ -147,6 +151,26 @@ def init_db(conn: sqlite3.Connection) -> None:
             notes TEXT NOT NULL DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS dev_recipes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            name TEXT NOT NULL,
+            process_type TEXT NOT NULL DEFAULT 'B&W',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS dev_recipe_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL REFERENCES dev_recipes(id) ON DELETE CASCADE,
+            step_order INTEGER NOT NULL DEFAULT 0,
+            chemical_name TEXT NOT NULL DEFAULT '',
+            temperature TEXT NOT NULL DEFAULT '',
+            duration_seconds INTEGER,
+            agitation TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS cloud_settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
@@ -214,6 +238,12 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
             conn.commit()
         except sqlite3.OperationalError:
             pass  # Column already exists
+
+    try:
+        conn.execute("ALTER TABLE rolls ADD COLUMN location TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
 
 
 def _ensure_default_user(conn: sqlite3.Connection) -> None:
@@ -507,11 +537,12 @@ def create_roll(conn: sqlite3.Connection, roll: Roll, frames_per_roll: int) -> R
     cur = conn.execute(
         """INSERT INTO rolls (user_id, film_stock_id, camera_id, lens_id, status,
            loaded_date, finished_date, sent_for_dev_date, developed_date,
-           notes, title, push_pull_stops, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           notes, title, push_pull_stops, location, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (roll.user_id, roll.film_stock_id, roll.camera_id, roll.lens_id, roll.status,
          roll.loaded_date, roll.finished_date, roll.sent_for_dev_date,
-         roll.developed_date, roll.notes, roll.title, roll.push_pull_stops, now),
+         roll.developed_date, roll.notes, roll.title, roll.push_pull_stops,
+         roll.location, now),
     )
     roll_id = cur.lastrowid
     # Pre-populate frames, seeding with roll's default lens if set.
@@ -535,11 +566,11 @@ def update_roll(conn: sqlite3.Connection, roll: Roll) -> Roll:
         """UPDATE rolls SET film_stock_id=?, camera_id=?, lens_id=?, status=?,
            loaded_date=?, finished_date=?, sent_for_dev_date=?,
            developed_date=?, notes=?, title=?, push_pull_stops=?,
-           scan_date=?, scan_notes=? WHERE id=?""",
+           scan_date=?, scan_notes=?, location=? WHERE id=?""",
         (roll.film_stock_id, roll.camera_id, roll.lens_id, roll.status,
          roll.loaded_date, roll.finished_date, roll.sent_for_dev_date,
          roll.developed_date, roll.notes, roll.title, roll.push_pull_stops,
-         roll.scan_date, roll.scan_notes, roll.id),
+         roll.scan_date, roll.scan_notes, roll.location, roll.id),
     )
     conn.commit()
     return get_roll(conn, roll.id)
@@ -678,6 +709,62 @@ def delete_cloud_settings(conn: sqlite3.Connection, user_id: int) -> None:
     conn.commit()
 
 
+# --- Dev Recipe CRUD ---
+
+def get_dev_recipes(conn: sqlite3.Connection, user_id: int) -> list[DevRecipe]:
+    rows = conn.execute(
+        "SELECT * FROM dev_recipes WHERE user_id = ? ORDER BY name", (user_id,)
+    ).fetchall()
+    return [DevRecipe(**dict(r)) for r in rows]
+
+
+def get_dev_recipe(conn: sqlite3.Connection, recipe_id: int) -> DevRecipe | None:
+    row = conn.execute("SELECT * FROM dev_recipes WHERE id = ?", (recipe_id,)).fetchone()
+    return DevRecipe(**dict(row)) if row else None
+
+
+def get_dev_recipe_steps(conn: sqlite3.Connection, recipe_id: int) -> list[DevRecipeStep]:
+    rows = conn.execute(
+        "SELECT * FROM dev_recipe_steps WHERE recipe_id = ? ORDER BY step_order",
+        (recipe_id,),
+    ).fetchall()
+    return [DevRecipeStep(**dict(r)) for r in rows]
+
+
+def save_dev_recipe(conn: sqlite3.Connection, recipe: DevRecipe, steps: list[DevRecipeStep]) -> DevRecipe:
+    """Insert or update a recipe and its steps atomically."""
+    now = datetime.now().isoformat()
+    if recipe.id is None:
+        cur = conn.execute(
+            """INSERT INTO dev_recipes (user_id, name, process_type, notes, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (recipe.user_id, recipe.name, recipe.process_type, recipe.notes, now),
+        )
+        recipe_id = cur.lastrowid
+    else:
+        conn.execute(
+            """UPDATE dev_recipes SET name=?, process_type=?, notes=? WHERE id=?""",
+            (recipe.name, recipe.process_type, recipe.notes, recipe.id),
+        )
+        recipe_id = recipe.id
+        conn.execute("DELETE FROM dev_recipe_steps WHERE recipe_id = ?", (recipe_id,))
+    for i, step in enumerate(steps):
+        conn.execute(
+            """INSERT INTO dev_recipe_steps (recipe_id, step_order, chemical_name,
+               temperature, duration_seconds, agitation, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (recipe_id, i, step.chemical_name, step.temperature,
+             step.duration_seconds, step.agitation, step.notes),
+        )
+    conn.commit()
+    return get_dev_recipe(conn, recipe_id)
+
+
+def delete_dev_recipe(conn: sqlite3.Connection, recipe_id: int) -> None:
+    conn.execute("DELETE FROM dev_recipes WHERE id = ?", (recipe_id,))
+    conn.commit()
+
+
 # --- Film Stock Alerts ---
 
 def get_low_stock_items(conn: sqlite3.Connection, user_id: int, threshold: int = 2) -> dict[str, list[dict]]:
@@ -803,6 +890,18 @@ def get_stats(conn: sqlite3.Connection, user_id: int) -> dict:
     ).fetchone()
     total_dev_cost = float(row["total"])
 
+    # Top shooting locations
+    rows = conn.execute(
+        """SELECT location, COUNT(*) as cnt
+           FROM rolls
+           WHERE user_id = ? AND location != ''
+           GROUP BY location
+           ORDER BY cnt DESC
+           LIMIT 5""",
+        (user_id,),
+    ).fetchall()
+    top_locations = [{"location": r["location"], "count": r["cnt"]} for r in rows]
+
     # Rolls by month (last 12 months, based on loaded_date)
     rows = conn.execute(
         """SELECT strftime('%Y-%m', loaded_date) as month, COUNT(*) as cnt
@@ -825,6 +924,7 @@ def get_stats(conn: sqlite3.Connection, user_id: int) -> dict:
         "top_lenses": top_lenses,
         "dev_type_split": dev_type_split,
         "total_dev_cost": total_dev_cost,
+        "top_locations": top_locations,
         "rolls_by_month": rolls_by_month,
     }
 

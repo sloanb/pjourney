@@ -2,12 +2,13 @@
 
 import sqlite3
 import tempfile
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 
 from pjourney.db import database as db
-from pjourney.db.models import Camera, CameraIssue, CloudSettings, DevelopmentStep, FilmStock, Frame, Lens, LensNote, Roll, RollDevelopment
+from pjourney.db.models import Camera, CameraIssue, CloudSettings, DevRecipe, DevRecipeStep, DevelopmentStep, FilmStock, Frame, Lens, LensNote, Roll, RollDevelopment
 
 
 @pytest.fixture
@@ -1122,7 +1123,7 @@ class TestGetStats:
         expected_keys = {
             "rolls_by_status", "total_frames_logged", "top_film_stocks",
             "rolls_by_format", "rolls_by_type", "top_cameras", "top_lenses",
-            "dev_type_split", "total_dev_cost", "rolls_by_month",
+            "dev_type_split", "total_dev_cost", "top_locations", "rolls_by_month",
         }
         assert set(stats.keys()) == expected_keys
 
@@ -1288,3 +1289,284 @@ class TestGetStats:
         stats = db.get_stats(conn, user.id)
         assert len(stats["rolls_by_month"]) == 1
         assert stats["rolls_by_month"][0]["month"] == d.today().strftime("%Y-%m")
+
+
+# ---------------------------------------------------------------------------
+# Date adapters
+# ---------------------------------------------------------------------------
+
+class TestDateAdapters:
+    def test_date_binding_no_deprecation_warning(self, conn):
+        import warnings
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            roll.loaded_date = date(2025, 6, 15)
+            db.update_roll(conn, roll)
+
+    def test_datetime_binding_no_deprecation_warning(self, conn):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            db.create_user(conn, "adaptertest", "pass123")
+
+
+# ---------------------------------------------------------------------------
+# Roll location
+# ---------------------------------------------------------------------------
+
+class TestRollLocation:
+    def test_create_roll_with_location(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        roll = Roll(user_id=user.id, film_stock_id=stock.id, location="NYC")
+        saved = db.create_roll(conn, roll, 36)
+        assert saved.location == "NYC"
+
+    def test_create_roll_default_location(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        roll = Roll(user_id=user.id, film_stock_id=stock.id)
+        saved = db.create_roll(conn, roll, 36)
+        assert saved.location == ""
+
+    def test_update_roll_location(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Tri-X", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        roll.location = "Tokyo"
+        updated = db.update_roll(conn, roll)
+        assert updated.location == "Tokyo"
+
+    def test_update_roll_preserves_location(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Ilford", name="HP5", frames_per_roll=36,
+        ))
+        roll = db.create_roll(conn, Roll(
+            user_id=user.id, film_stock_id=stock.id, location="London",
+        ), 36)
+        roll.notes = "Updated notes"
+        updated = db.update_roll(conn, roll)
+        assert updated.location == "London"
+
+    def test_top_locations_in_stats(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+        ))
+        db.create_roll(conn, Roll(
+            user_id=user.id, film_stock_id=stock.id, location="NYC",
+        ), 36)
+        db.create_roll(conn, Roll(
+            user_id=user.id, film_stock_id=stock.id, location="NYC",
+        ), 36)
+        db.create_roll(conn, Roll(
+            user_id=user.id, film_stock_id=stock.id, location="Tokyo",
+        ), 36)
+        stats = db.get_stats(conn, user.id)
+        assert stats["top_locations"][0]["location"] == "NYC"
+        assert stats["top_locations"][0]["count"] == 2
+
+    def test_top_locations_excludes_empty(self, conn):
+        user = db.get_users(conn)[0]
+        stock = db.save_film_stock(conn, FilmStock(
+            user_id=user.id, brand="Kodak", name="Portra", frames_per_roll=36,
+        ))
+        db.create_roll(conn, Roll(user_id=user.id, film_stock_id=stock.id), 36)
+        stats = db.get_stats(conn, user.id)
+        assert stats["top_locations"] == []
+
+    def test_top_locations_empty_db(self, conn):
+        user = db.get_users(conn)[0]
+        stats = db.get_stats(conn, user.id)
+        assert stats["top_locations"] == []
+
+
+class TestRollLocationMigration:
+    def test_migrate_adds_location_to_rolls(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "old.db"
+            conn = db.get_connection(path)
+            conn.executescript("""
+                CREATE TABLE rolls (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    film_stock_id INTEGER NOT NULL,
+                    lens_id INTEGER,
+                    camera_id INTEGER,
+                    status TEXT NOT NULL DEFAULT 'fresh',
+                    loaded_date DATE,
+                    finished_date DATE,
+                    sent_for_dev_date DATE,
+                    developed_date DATE,
+                    notes TEXT NOT NULL DEFAULT '',
+                    title TEXT NOT NULL DEFAULT '',
+                    push_pull_stops REAL NOT NULL DEFAULT 0.0,
+                    scan_date DATE,
+                    scan_notes TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE cameras (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    camera_type TEXT NOT NULL DEFAULT 'film',
+                    sensor_size TEXT
+                );
+                CREATE TABLE film_stocks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    brand TEXT NOT NULL DEFAULT '',
+                    name TEXT NOT NULL,
+                    type TEXT NOT NULL DEFAULT 'color',
+                    media_type TEXT NOT NULL DEFAULT 'analog',
+                    iso INTEGER NOT NULL DEFAULT 400,
+                    format TEXT NOT NULL DEFAULT '35mm',
+                    frames_per_roll INTEGER NOT NULL DEFAULT 36,
+                    quantity_on_hand INTEGER NOT NULL DEFAULT 0,
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            conn.commit()
+            db._migrate_db(conn)
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(rolls)").fetchall()
+            }
+            assert "location" in columns
+            conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Dev recipe CRUD
+# ---------------------------------------------------------------------------
+
+class TestDevRecipeCRUD:
+    def test_create_recipe(self, conn):
+        user = db.get_users(conn)[0]
+        recipe = DevRecipe(user_id=user.id, name="Standard B&W", process_type="B&W")
+        steps = [DevRecipeStep(chemical_name="D-76", temperature="20C", duration_seconds=480)]
+        saved = db.save_dev_recipe(conn, recipe, steps)
+        assert saved.id is not None
+        assert saved.name == "Standard B&W"
+
+    def test_get_recipes(self, conn):
+        user = db.get_users(conn)[0]
+        db.save_dev_recipe(conn, DevRecipe(
+            user_id=user.id, name="B&W Standard", process_type="B&W",
+        ), [])
+        db.save_dev_recipe(conn, DevRecipe(
+            user_id=user.id, name="C-41 Home", process_type="C-41",
+        ), [])
+        recipes = db.get_dev_recipes(conn, user.id)
+        assert len(recipes) == 2
+
+    def test_get_recipe_by_id(self, conn):
+        user = db.get_users(conn)[0]
+        saved = db.save_dev_recipe(conn, DevRecipe(
+            user_id=user.id, name="Test Recipe", process_type="E-6",
+        ), [])
+        fetched = db.get_dev_recipe(conn, saved.id)
+        assert fetched is not None
+        assert fetched.name == "Test Recipe"
+
+    def test_get_recipe_returns_none_when_missing(self, conn):
+        assert db.get_dev_recipe(conn, 99999) is None
+
+    def test_get_recipe_steps(self, conn):
+        user = db.get_users(conn)[0]
+        steps = [
+            DevRecipeStep(chemical_name="Developer", temperature="20C", duration_seconds=480),
+            DevRecipeStep(chemical_name="Stop Bath", temperature="20C", duration_seconds=60),
+            DevRecipeStep(chemical_name="Fixer", temperature="20C", duration_seconds=300),
+        ]
+        saved = db.save_dev_recipe(conn, DevRecipe(
+            user_id=user.id, name="Full B&W", process_type="B&W",
+        ), steps)
+        fetched_steps = db.get_dev_recipe_steps(conn, saved.id)
+        assert len(fetched_steps) == 3
+        assert fetched_steps[0].chemical_name == "Developer"
+        assert fetched_steps[0].step_order == 0
+        assert fetched_steps[2].chemical_name == "Fixer"
+        assert fetched_steps[2].step_order == 2
+
+    def test_update_recipe(self, conn):
+        user = db.get_users(conn)[0]
+        saved = db.save_dev_recipe(conn, DevRecipe(
+            user_id=user.id, name="Old Name", process_type="B&W",
+        ), [DevRecipeStep(chemical_name="D-76")])
+        saved.name = "New Name"
+        saved.process_type = "C-41"
+        new_steps = [
+            DevRecipeStep(chemical_name="Color Dev", temperature="38C"),
+            DevRecipeStep(chemical_name="Bleach", temperature="38C"),
+        ]
+        updated = db.save_dev_recipe(conn, saved, new_steps)
+        assert updated.name == "New Name"
+        assert updated.process_type == "C-41"
+        fetched_steps = db.get_dev_recipe_steps(conn, updated.id)
+        assert len(fetched_steps) == 2
+        assert fetched_steps[0].chemical_name == "Color Dev"
+
+    def test_update_recipe_replaces_steps(self, conn):
+        user = db.get_users(conn)[0]
+        saved = db.save_dev_recipe(conn, DevRecipe(
+            user_id=user.id, name="Test", process_type="B&W",
+        ), [DevRecipeStep(chemical_name="Developer")])
+        db.save_dev_recipe(conn, saved, [])
+        assert db.get_dev_recipe_steps(conn, saved.id) == []
+
+    def test_delete_recipe(self, conn):
+        user = db.get_users(conn)[0]
+        saved = db.save_dev_recipe(conn, DevRecipe(
+            user_id=user.id, name="To Delete", process_type="B&W",
+        ), [DevRecipeStep(chemical_name="D-76")])
+        db.delete_dev_recipe(conn, saved.id)
+        assert db.get_dev_recipe(conn, saved.id) is None
+        assert db.get_dev_recipe_steps(conn, saved.id) == []
+
+    def test_delete_recipe_cascades_steps(self, conn):
+        user = db.get_users(conn)[0]
+        steps = [DevRecipeStep(chemical_name="Developer"), DevRecipeStep(chemical_name="Fixer")]
+        saved = db.save_dev_recipe(conn, DevRecipe(
+            user_id=user.id, name="Cascade Test",
+        ), steps)
+        recipe_id = saved.id
+        db.delete_dev_recipe(conn, recipe_id)
+        assert db.get_dev_recipe_steps(conn, recipe_id) == []
+
+    def test_recipe_with_notes(self, conn):
+        user = db.get_users(conn)[0]
+        saved = db.save_dev_recipe(conn, DevRecipe(
+            user_id=user.id, name="With Notes", process_type="B&W",
+            notes="Dilution 1+1",
+        ), [])
+        assert saved.notes == "Dilution 1+1"
+
+
+class TestDevRecipeSchema:
+    def test_dev_recipes_table_exists(self, conn):
+        tables = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        ).fetchall()
+        names = {r["name"] for r in tables}
+        assert "dev_recipes" in names
+
+    def test_dev_recipe_steps_table_exists(self, conn):
+        tables = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        ).fetchall()
+        names = {r["name"] for r in tables}
+        assert "dev_recipe_steps" in names

@@ -104,6 +104,7 @@ class Roll:
     push_pull_stops: float = 0.0
     scan_date: date | None = None
     scan_notes: str = ""
+    location: str = ""
     created_at: datetime | None = None
 
 
@@ -159,6 +160,28 @@ class DevelopmentStep:
     step_order: int = 0
     chemical_name: str = ""
     temperature: str = ""       # stored as text, e.g. "20°C", "68°F"
+    duration_seconds: int | None = None
+    agitation: str = ""
+    notes: str = ""
+
+
+@dataclass
+class DevRecipe:
+    id: int | None = None
+    user_id: int = 0
+    name: str = ""
+    process_type: str = "B&W"
+    notes: str = ""
+    created_at: datetime | None = None
+
+
+@dataclass
+class DevRecipeStep:
+    id: int | None = None
+    recipe_id: int = 0
+    step_order: int = 0
+    chemical_name: str = ""
+    temperature: str = ""
     duration_seconds: int | None = None
     agitation: str = ""
     notes: str = ""

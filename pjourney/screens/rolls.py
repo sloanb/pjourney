@@ -11,7 +11,7 @@ from textual.widgets import Button, Footer, Input, Label, Select, Static
 from pjourney.widgets.app_header import AppHeader
 
 from pjourney.db import database as db
-from pjourney.db.models import PROCESS_TYPES, ROLL_STATUSES, DevelopmentStep, Roll, RollDevelopment
+from pjourney.db.models import PROCESS_TYPES, ROLL_STATUSES, DevRecipeStep, DevelopmentStep, Roll, RollDevelopment
 from pjourney.errors import ErrorCode, app_error
 from pjourney.widgets.confirm_modal import ConfirmModal
 from pjourney.widgets.inventory_table import InventoryTable
@@ -43,6 +43,59 @@ def _format_duration(seconds: int | None) -> str:
     m = seconds // 60
     s = seconds % 60
     return f"{m}:{s:02d}"
+
+
+class RecipePickerModal(ModalScreen[int | None]):
+    """List available dev recipes and let user pick one."""
+
+    CSS = """
+    RecipePickerModal {
+        align: center middle;
+    }
+    #picker-box {
+        width: 64;
+        height: 20;
+        border: heavy $accent;
+        padding: 1 2;
+        background: $surface;
+    }
+    #picker-table {
+        height: 1fr;
+    }
+    .form-buttons {
+        height: auto;
+        margin: 1 0 0 0;
+    }
+    .form-buttons Button {
+        margin: 0 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="picker-box"):
+            yield Static("Select Recipe", markup=False)
+            yield InventoryTable(id="picker-table")
+            with Horizontal(classes="form-buttons"):
+                yield Button("Select", id="select-btn", variant="primary")
+                yield Button("Cancel", id="cancel-btn")
+
+    def on_mount(self) -> None:
+        table = self.query_one("#picker-table", InventoryTable)
+        table.add_columns("Name", "Process")
+        recipes = db.get_dev_recipes(self.app.db_conn, self.app.current_user.id)
+        for r in recipes:
+            table.add_row(r.name, r.process_type, key=str(r.id))
+
+    @on(Button.Pressed, "#select-btn")
+    def select_recipe(self) -> None:
+        table = self.query_one("#picker-table", InventoryTable)
+        if table.cursor_row is not None and table.row_count > 0:
+            row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+            self.dismiss(int(row_key.value))
+
+    @on(Button.Pressed, "#cancel-btn")
+    def cancel(self) -> None:
+        self.dismiss(None)
 
 
 class DevelopmentTypeModal(ModalScreen[str | None]):
@@ -145,6 +198,7 @@ class SelfDevelopModal(ModalScreen[tuple[RollDevelopment, list[DevelopmentStep]]
                 value="B&W",
                 id="process-select",
             )
+            yield Button("Load Recipe", id="load-recipe-btn")
             yield Label("Development Steps")
             yield VerticalScroll(id="steps-scroll")
             yield Button("+ Add Step", id="add-step-btn")
@@ -171,6 +225,33 @@ class SelfDevelopModal(ModalScreen[tuple[RollDevelopment, list[DevelopmentStep]]
     @on(Button.Pressed, "#add-step-btn")
     def add_step(self) -> None:
         self._add_step_row()
+
+    @on(Button.Pressed, "#load-recipe-btn")
+    def load_recipe(self) -> None:
+        def on_result(recipe_id: int | None) -> None:
+            if recipe_id is None:
+                return
+            recipe = db.get_dev_recipe(self.app.db_conn, recipe_id)
+            if not recipe:
+                return
+            steps = db.get_dev_recipe_steps(self.app.db_conn, recipe_id)
+            # Set process type
+            self.query_one("#process-select", Select).value = recipe.process_type
+            # Clear existing step rows — don't reset counter to avoid ID collisions
+            scroll = self.query_one("#steps-scroll", VerticalScroll)
+            scroll.remove_children()
+            # Add recipe steps with new IDs (counter continues from where it was)
+            for step in steps:
+                self._add_step_row()
+                idx = self._step_count - 1
+                self.query_one(f"#step-{idx}-chemical", Input).value = step.chemical_name
+                self.query_one(f"#step-{idx}-temp", Input).value = step.temperature
+                self.query_one(f"#step-{idx}-duration", Input).value = _format_duration(step.duration_seconds)
+                self.query_one(f"#step-{idx}-agitation", Input).value = step.agitation
+            # Set notes
+            if recipe.notes:
+                self.query_one("#dev-notes", Input).value = recipe.notes
+        self.app.push_screen(RecipePickerModal(), on_result)
 
     @on(Button.Pressed, "#save-btn")
     def save(self) -> None:
@@ -416,7 +497,7 @@ class ScanRollModal(ModalScreen[tuple[str, str] | None]):
         self.dismiss(None)
 
 
-class CreateRollModal(ModalScreen[tuple[int, str, str] | None]):
+class CreateRollModal(ModalScreen[tuple[int, str, str, str] | None]):
     """Select a film stock and create a new roll."""
 
     CSS = """
@@ -462,6 +543,8 @@ class CreateRollModal(ModalScreen[tuple[int, str, str] | None]):
                 yield Static("No film stocks available. Add one first.", markup=False)
             yield Label("Title (optional)")
             yield Input(id="title", max_length=60)
+            yield Label("Location (optional)")
+            yield Input(id="location")
             yield Label("Notes")
             yield Input(id="notes")
             with Horizontal(classes="form-buttons"):
@@ -477,15 +560,16 @@ class CreateRollModal(ModalScreen[tuple[int, str, str] | None]):
         except Exception:
             return
         title = self.query_one("#title", Input).value.strip()
+        location = self.query_one("#location", Input).value.strip()
         notes = self.query_one("#notes", Input).value.strip()
-        self.dismiss((stock_id, notes, title))
+        self.dismiss((stock_id, notes, title, location))
 
     @on(Button.Pressed, "#cancel-btn")
     def cancel(self) -> None:
         self.dismiss(None)
 
 
-class LoadRollModal(ModalScreen[tuple[int, int | None, float] | None]):
+class LoadRollModal(ModalScreen[tuple[int, int | None, float, str] | None]):
     """Select a camera and optional lens to load a roll into."""
 
     CSS = """
@@ -541,6 +625,8 @@ class LoadRollModal(ModalScreen[tuple[int, int | None, float] | None]):
             yield Select(lens_options, value=0, id="lens-select")
             yield Label("Push/Pull (stops)")
             yield Select(push_pull_options, value=self._current_push_pull, id="push-pull-select")
+            yield Label("Location (optional)")
+            yield Input(id="location")
             with Horizontal(classes="form-buttons"):
                 yield Button("Load", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -557,7 +643,8 @@ class LoadRollModal(ModalScreen[tuple[int, int | None, float] | None]):
         lens_id = lens_val if lens_val and lens_val != 0 else None
         push_pull_val = self.query_one("#push-pull-select", Select).value
         push_pull = float(push_pull_val) if push_pull_val is not Select.NULL else 0.0
-        self.dismiss((camera_id, lens_id, push_pull))
+        location = self.query_one("#location", Input).value.strip()
+        self.dismiss((camera_id, lens_id, push_pull, location))
 
     @on(Button.Pressed, "#cancel-btn")
     def cancel(self) -> None:
@@ -621,7 +708,7 @@ class RollsScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#roll-table", InventoryTable)
-        table.add_columns("Title", "Film Stock", "Camera", "Status", "Push/Pull", "Loaded", "Notes")
+        table.add_columns("Title", "Film Stock", "Camera", "Status", "Location", "Push/Pull", "Loaded", "Notes")
         self._refresh()
 
     def on_screen_resume(self) -> None:
@@ -651,7 +738,7 @@ class RollsScreen(Screen):
                     status_display = "developed [S]"
                 table.add_row(
                     title, stock_name, camera_name, status_display,
-                    pp, str(r.loaded_date or ""), r.notes,
+                    r.location, pp, str(r.loaded_date or ""), r.notes,
                     key=str(r.id),
                 )
         except Exception:
@@ -701,10 +788,10 @@ class RollsScreen(Screen):
 
     @on(Button.Pressed, "#new-btn")
     def action_new_roll(self) -> None:
-        def on_result(result: tuple[int, str, str] | None) -> None:
+        def on_result(result: tuple[int, str, str, str] | None) -> None:
             if result is None:
                 return
-            stock_id, notes, title = result
+            stock_id, notes, title, location = result
             try:
                 stock = db.get_film_stock(self.app.db_conn, stock_id)
                 if not stock:
@@ -714,6 +801,7 @@ class RollsScreen(Screen):
                     film_stock_id=stock_id,
                     notes=notes,
                     title=title,
+                    location=location,
                 )
                 db.create_roll(self.app.db_conn, roll, stock.frames_per_roll)
                 self._refresh()
@@ -730,14 +818,15 @@ class RollsScreen(Screen):
         if not roll or roll.status != "fresh":
             return
 
-        def on_result(result: tuple[int, int | None, float] | None) -> None:
+        def on_result(result: tuple[int, int | None, float, str] | None) -> None:
             if result is None:
                 return
-            camera_id, lens_id, push_pull = result
+            camera_id, lens_id, push_pull, location = result
             try:
                 roll.camera_id = camera_id
                 roll.lens_id = lens_id
                 roll.push_pull_stops = push_pull
+                roll.location = location
                 roll.status = "loaded"
                 roll.loaded_date = date.today()
                 db.update_roll(self.app.db_conn, roll)

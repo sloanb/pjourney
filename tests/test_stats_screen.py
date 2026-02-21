@@ -58,6 +58,7 @@ class TestStatsScreen:
                 header_texts.append(text)
             assert "Roll Overview" in header_texts
             assert "Film Usage" in header_texts
+            assert "Top Shooting Locations" in header_texts
             assert "Equipment Usage" in header_texts
             assert "Development" in header_texts
             assert "Activity (last 12 months)" in header_texts

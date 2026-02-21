@@ -48,6 +48,8 @@ class StatsScreen(Screen):
             yield Static("", id="roll-overview-content", classes="stat-content")
             yield Static("Film Usage", classes="section-header")
             yield Static("", id="film-usage-content", classes="stat-content")
+            yield Static("Top Shooting Locations", classes="section-header")
+            yield Static("", id="locations-content", classes="stat-content")
             yield Static("Equipment Usage", classes="section-header")
             yield Static("", id="equipment-content", classes="stat-content")
             yield Static("Development", classes="section-header")
@@ -69,6 +71,7 @@ class StatsScreen(Screen):
             stats = db.get_stats(self.app.db_conn, self.app.current_user.id)
             self._update_roll_overview(stats)
             self._update_film_usage(stats)
+            self._update_locations(stats)
             self._update_equipment(stats)
             self._update_dev(stats)
             self._update_activity(stats)
@@ -107,6 +110,16 @@ class StatsScreen(Screen):
                 lines.append(f"  {label}: {item['count']} rolls")
 
         self.query_one("#film-usage-content", Static).update("\n".join(lines))
+
+    def _update_locations(self, stats: dict) -> None:
+        locations = stats.get("top_locations", [])
+        if locations:
+            lines = []
+            for item in locations:
+                lines.append(f"  {item['location']} ({item['count']} rolls)")
+            self.query_one("#locations-content", Static).update("\n".join(lines))
+        else:
+            self.query_one("#locations-content", Static).update("No location data yet.")
 
     def _update_equipment(self, stats: dict) -> None:
         lines = []

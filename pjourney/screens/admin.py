@@ -5,14 +5,14 @@ import shutil
 import sqlite3
 import tempfile
 import webbrowser
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from textual import on, work
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Input, Label, Static
+from textual.widgets import Button, Footer, Input, Label, Select, Static
 
 from pjourney.widgets.app_header import AppHeader
 
@@ -20,8 +20,10 @@ from pjourney.cloud.credentials import CredentialStore
 from pjourney.cloud.dropbox_provider import DropboxProvider
 from pjourney.cloud.provider import CloudProvider, CloudProviderError
 from pjourney.db import database as db
-from pjourney.db.models import CloudSettings
+from pjourney.db.models import CloudSettings, DevRecipe, DevRecipeStep, PROCESS_TYPES
 from pjourney.errors import ErrorCode, app_error
+from pjourney.export import export_frames_csv, export_rolls_csv
+from pjourney.screens.rolls import _format_duration, _parse_duration
 from pjourney.widgets.confirm_modal import ConfirmModal
 from pjourney.widgets.inventory_table import InventoryTable
 
@@ -352,6 +354,157 @@ class CloudRestoreModal(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class RecipeFormModal(ModalScreen[tuple[DevRecipe, list[DevRecipeStep]] | None]):
+    """Create or edit a development recipe template."""
+
+    CSS = """
+    RecipeFormModal {
+        align: center middle;
+    }
+    #recipe-form-box {
+        width: 70;
+        height: auto;
+        max-height: 40;
+        border: heavy $accent;
+        padding: 1 2;
+        background: $surface;
+    }
+    #recipe-form-box Label {
+        margin: 1 0 0 0;
+    }
+    #recipe-steps-scroll {
+        height: 12;
+        border: solid $accent;
+        margin: 1 0;
+    }
+    .step-row {
+        height: auto;
+        margin: 0 0 1 0;
+    }
+    .step-row Input {
+        width: 1fr;
+        margin: 0 1 0 0;
+    }
+    .form-buttons {
+        height: auto;
+        margin: 1 0 0 0;
+    }
+    .form-buttons Button {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(
+        self,
+        recipe: DevRecipe | None = None,
+        steps: list[DevRecipeStep] | None = None,
+    ):
+        super().__init__()
+        self._recipe = recipe
+        self._existing_steps = steps or []
+        self._step_count = 0
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="recipe-form-box"):
+            yield Static(
+                "Edit Recipe" if self._recipe else "Create Recipe",
+                markup=False,
+            )
+            yield Label("Recipe Name")
+            yield Input(
+                id="recipe-name",
+                value=self._recipe.name if self._recipe else "",
+            )
+            yield Label("Process Type")
+            yield Select(
+                [(p, p) for p in PROCESS_TYPES],
+                value=self._recipe.process_type if self._recipe else "B&W",
+                id="process-select",
+            )
+            yield Label("Steps")
+            yield VerticalScroll(id="recipe-steps-scroll")
+            yield Button("+ Add Step", id="add-step-btn")
+            yield Label("Notes")
+            yield Input(
+                id="recipe-notes",
+                value=self._recipe.notes if self._recipe else "",
+            )
+            with Horizontal(classes="form-buttons"):
+                yield Button("Save", id="save-btn", variant="primary")
+                yield Button("Cancel", id="cancel-btn")
+
+    def on_mount(self) -> None:
+        if self._existing_steps:
+            for step in self._existing_steps:
+                self._add_step_row(
+                    chemical=step.chemical_name,
+                    temp=step.temperature,
+                    duration=_format_duration(step.duration_seconds),
+                    agitation=step.agitation,
+                )
+        else:
+            self._add_step_row()
+
+    def _add_step_row(
+        self,
+        chemical: str = "",
+        temp: str = "",
+        duration: str = "",
+        agitation: str = "",
+    ) -> None:
+        n = self._step_count
+        self._step_count += 1
+        scroll = self.query_one("#recipe-steps-scroll", VerticalScroll)
+        row = Horizontal(id=f"step-row-{n}", classes="step-row")
+        scroll.mount(row)
+        row.mount(Input(placeholder="Chemical", id=f"step-{n}-chemical", value=chemical))
+        row.mount(Input(placeholder="Temp (e.g. 20C)", id=f"step-{n}-temp", value=temp))
+        row.mount(Input(placeholder="Time (MM:SS)", id=f"step-{n}-duration", value=duration))
+        row.mount(Input(placeholder="Agitation", id=f"step-{n}-agitation", value=agitation))
+
+    @on(Button.Pressed, "#add-step-btn")
+    def add_step(self) -> None:
+        self._add_step_row()
+
+    @on(Button.Pressed, "#save-btn")
+    def save(self) -> None:
+        name = self.query_one("#recipe-name", Input).value.strip()
+        if not name:
+            return
+        steps = []
+        for i in range(self._step_count):
+            try:
+                chemical = self.query_one(f"#step-{i}-chemical", Input).value.strip()
+            except Exception:
+                continue
+            if not chemical:
+                continue
+            temp = self.query_one(f"#step-{i}-temp", Input).value.strip()
+            duration_raw = self.query_one(f"#step-{i}-duration", Input).value.strip()
+            agitation = self.query_one(f"#step-{i}-agitation", Input).value.strip()
+            steps.append(DevRecipeStep(
+                chemical_name=chemical,
+                temperature=temp,
+                duration_seconds=_parse_duration(duration_raw),
+                agitation=agitation,
+            ))
+        process_val = self.query_one("#process-select", Select).value
+        process_type = process_val if process_val is not Select.NULL else "B&W"
+        notes = self.query_one("#recipe-notes", Input).value.strip()
+        recipe = DevRecipe(
+            id=self._recipe.id if self._recipe else None,
+            user_id=self._recipe.user_id if self._recipe else 0,
+            name=name,
+            process_type=process_type,
+            notes=notes,
+        )
+        self.dismiss((recipe, steps))
+
+    @on(Button.Pressed, "#cancel-btn")
+    def cancel(self) -> None:
+        self.dismiss(None)
+
+
 # ---------------------------------------------------------------------------
 # Admin Screen
 # ---------------------------------------------------------------------------
@@ -394,8 +547,21 @@ class AdminScreen(Screen):
     #cloud-actions {
         height: auto;
     }
+    #recipe-section {
+        height: auto;
+        border: solid $accent;
+        padding: 0 1;
+        margin: 0;
+    }
+    #recipe-actions {
+        height: auto;
+    }
+    #recipe-actions Button {
+        margin: 0 1;
+    }
     #user-section {
-        height: 1fr;
+        height: auto;
+        min-height: 12;
         border: solid $accent;
         padding: 0 1;
     }
@@ -426,6 +592,7 @@ class AdminScreen(Screen):
                 with Horizontal():
                     yield Button("Backup Database", id="backup-btn")
                     yield Button("Vacuum Database", id="vacuum-btn")
+                    yield Button("Export Data (CSV)", id="export-btn")
             with Vertical(id="cloud-section"):
                 yield Static("Cloud Sync", markup=False)
                 yield Label("Not connected", id="cloud-status-label")
@@ -435,6 +602,13 @@ class AdminScreen(Screen):
                     yield Button("Sync Now", id="sync-btn", disabled=True)
                     yield Button("Restore", id="restore-btn", disabled=True)
                     yield Button("Disconnect", id="disconnect-btn", disabled=True)
+            with Vertical(id="recipe-section"):
+                yield Static("Development Recipes", markup=False)
+                yield InventoryTable(id="recipe-table")
+                with Horizontal(id="recipe-actions"):
+                    yield Button("Create Recipe", id="create-recipe-btn")
+                    yield Button("Edit Recipe", id="edit-recipe-btn")
+                    yield Button("Delete Recipe", id="del-recipe-btn", variant="error")
             with Vertical(id="user-section"):
                 yield Static("User Management", markup=False)
                 yield InventoryTable(id="user-table")
@@ -448,7 +622,10 @@ class AdminScreen(Screen):
     def on_mount(self) -> None:
         table = self.query_one("#user-table", InventoryTable)
         table.add_columns("ID", "Username", "Created")
+        recipe_table = self.query_one("#recipe-table", InventoryTable)
+        recipe_table.add_columns("Name", "Process", "Steps", "Created")
         self._refresh_users()
+        self._refresh_recipes()
         self._refresh_cloud_status()
 
     # --- Cloud helpers ---
@@ -728,6 +905,100 @@ class AdminScreen(Screen):
                     self._refresh_users()
                 except Exception:
                     app_error(self, ErrorCode.DB_DELETE)
+
+    # --- Recipe handlers ---
+
+    def _refresh_recipes(self) -> None:
+        try:
+            table = self.query_one("#recipe-table", InventoryTable)
+            table.clear()
+            recipes = db.get_dev_recipes(self.app.db_conn, self.app.current_user.id)
+            for r in recipes:
+                steps = db.get_dev_recipe_steps(self.app.db_conn, r.id)
+                table.add_row(
+                    r.name, r.process_type, str(len(steps)),
+                    str(r.created_at or ""),
+                    key=str(r.id),
+                )
+        except Exception:
+            app_error(self, ErrorCode.DB_LOAD)
+
+    @on(Button.Pressed, "#create-recipe-btn")
+    def create_recipe(self) -> None:
+        def on_result(result: tuple[DevRecipe, list[DevRecipeStep]] | None) -> None:
+            if result is None:
+                return
+            recipe, steps = result
+            try:
+                recipe.user_id = self.app.current_user.id
+                db.save_dev_recipe(self.app.db_conn, recipe, steps)
+                self._set_status("Recipe created")
+                self._refresh_recipes()
+            except Exception:
+                app_error(self, ErrorCode.DB_SAVE)
+        self.app.push_screen(RecipeFormModal(), on_result)
+
+    @on(Button.Pressed, "#edit-recipe-btn")
+    def edit_recipe(self) -> None:
+        table = self.query_one("#recipe-table", InventoryTable)
+        if table.cursor_row is None or table.row_count == 0:
+            return
+        row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+        recipe_id = int(row_key.value)
+        recipe = db.get_dev_recipe(self.app.db_conn, recipe_id)
+        if not recipe:
+            return
+        steps = db.get_dev_recipe_steps(self.app.db_conn, recipe_id)
+
+        def on_result(result: tuple[DevRecipe, list[DevRecipeStep]] | None) -> None:
+            if result is None:
+                return
+            updated_recipe, updated_steps = result
+            try:
+                updated_recipe.user_id = self.app.current_user.id
+                db.save_dev_recipe(self.app.db_conn, updated_recipe, updated_steps)
+                self._set_status("Recipe updated")
+                self._refresh_recipes()
+            except Exception:
+                app_error(self, ErrorCode.DB_SAVE)
+        self.app.push_screen(RecipeFormModal(recipe=recipe, steps=steps), on_result)
+
+    @on(Button.Pressed, "#del-recipe-btn")
+    def delete_recipe(self) -> None:
+        table = self.query_one("#recipe-table", InventoryTable)
+        if table.cursor_row is None or table.row_count == 0:
+            return
+        row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+        recipe_id = int(row_key.value)
+
+        def on_confirmed(confirmed: bool) -> None:
+            if not confirmed:
+                return
+            try:
+                db.delete_dev_recipe(self.app.db_conn, recipe_id)
+                self._set_status("Recipe deleted")
+                self._refresh_recipes()
+            except Exception:
+                app_error(self, ErrorCode.DB_DELETE)
+
+        self.app.push_screen(
+            ConfirmModal("Delete this recipe? This cannot be undone."),
+            on_confirmed,
+        )
+
+    # --- Export handler ---
+
+    @on(Button.Pressed, "#export-btn")
+    def do_export(self) -> None:
+        try:
+            today = date.today().isoformat()
+            rolls_path = Path.home() / f"pjourney-export-rolls-{today}.csv"
+            frames_path = Path.home() / f"pjourney-export-frames-{today}.csv"
+            export_rolls_csv(self.app.db_conn, self.app.current_user.id, rolls_path)
+            export_frames_csv(self.app.db_conn, self.app.current_user.id, frames_path)
+            self._set_status(f"Exported: {rolls_path.name} and {frames_path.name}")
+        except Exception:
+            app_error(self, ErrorCode.IO_BACKUP)
 
     @on(Button.Pressed, "#back-btn")
     def action_go_back(self) -> None:

@@ -9,6 +9,8 @@ from pjourney.db.models import (
     Camera,
     CameraIssue,
     CloudSettings,
+    DevRecipe,
+    DevRecipeStep,
     DevelopmentStep,
     FilmStock,
     Frame,
@@ -236,3 +238,54 @@ class TestCloudSettingsModel:
         assert settings.provider == "Dropbox"
         assert settings.remote_folder == "/pjourney-backups"
         assert settings.enabled is True
+
+
+class TestRollLocationModel:
+    def test_location_default(self):
+        roll = Roll()
+        assert roll.location == ""
+
+    def test_location_with_value(self):
+        roll = Roll(location="New York City")
+        assert roll.location == "New York City"
+
+
+class TestDevRecipeModel:
+    def test_defaults(self):
+        recipe = DevRecipe()
+        assert recipe.id is None
+        assert recipe.user_id == 0
+        assert recipe.name == ""
+        assert recipe.process_type == "B&W"
+        assert recipe.notes == ""
+        assert recipe.created_at is None
+
+    def test_with_values(self):
+        recipe = DevRecipe(
+            user_id=1, name="Standard B&W",
+            process_type="B&W", notes="Dilution 1+1",
+        )
+        assert recipe.name == "Standard B&W"
+        assert recipe.process_type == "B&W"
+
+
+class TestDevRecipeStepModel:
+    def test_defaults(self):
+        step = DevRecipeStep()
+        assert step.id is None
+        assert step.recipe_id == 0
+        assert step.step_order == 0
+        assert step.chemical_name == ""
+        assert step.temperature == ""
+        assert step.duration_seconds is None
+        assert step.agitation == ""
+        assert step.notes == ""
+
+    def test_with_values(self):
+        step = DevRecipeStep(
+            recipe_id=1, step_order=0,
+            chemical_name="Kodak D-76", temperature="20C",
+            duration_seconds=480, agitation="30s initial, 5s/min",
+        )
+        assert step.chemical_name == "Kodak D-76"
+        assert step.duration_seconds == 480
