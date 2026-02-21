@@ -32,7 +32,7 @@ python -m pytest tests/ -v
 ### Key directories
 
 - `pjourney/db/` — database.py (connection, schema, CRUD, get_stats(), recipe CRUD), models.py (dataclasses: Roll, FilmStock, DevRecipe, DevRecipeStep, etc.)
-- `pjourney/screens/` — login, dashboard, cameras, lenses, film_stock, rolls (rolls.py also contains ScanRollModal and RecipePickerModal), frames, stats (StatsScreen with aggregated photography data), admin (admin.py also contains CloudAuthModal, CloudFolderBrowserModal, CloudRestoreModal, NewFolderModal, RecipeFormModal)
+- `pjourney/screens/` — login, dashboard, cameras, lenses, film_stock, rolls (rolls.py also contains ScanRollModal and RecipePickerModal), frames, stats (StatsScreen with aggregated photography data), admin (AdminScreen uses TabbedContent with 4 tabs: Database, Cloud Sync, Recipes, Users; keyboard shortcuts 1-4 switch tabs; admin.py also contains CloudAuthModal, CloudFolderBrowserModal, CloudRestoreModal, NewFolderModal, RecipeFormModal)
 - `pjourney/widgets/` — reusable InventoryTable widget
 - `pjourney/cloud/` — provider.py (CloudProvider ABC, dataclasses, CloudProviderError), credentials.py (CredentialStore wrapping OS keyring), dropbox_provider.py (DropboxProvider: PKCE OAuth, folder browse, upload/download/disconnect)
 - `pjourney/export.py` — export_rolls_csv(), export_frames_csv()

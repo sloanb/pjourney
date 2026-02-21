@@ -53,7 +53,7 @@ pjourney/
     rolls.py              — Roll lifecycle management, frame access; rolls have title, location, and push/pull tracking
     frames.py             — Per-frame shooting details
     stats.py              — StatsScreen: roll overview, film usage, top shooting locations, equipment usage, activity
-    admin.py              — DB backup/vacuum/CSV export, cloud sync, development recipe management, and user management
+    admin.py              — Tabbed admin screen (Database, Cloud Sync, Recipes, Users tabs) with DB backup/vacuum/CSV export, Dropbox cloud sync, development recipe management, and user management
   widgets/
     inventory_table.py    — Shared DataTable with vim-style navigation
     app_header.py         — Common screen header
@@ -79,11 +79,11 @@ tests/
   test_cloud_modals.py    — Cloud admin modal tests (22 tests)
   test_scan_modal.py      — ScanRollModal tests (7 tests)
   test_stats_screen.py    — StatsScreen tests (6 tests)
-  test_recipe_modals.py   — RecipeFormModal and RecipePickerModal tests (14 tests)
+  test_recipe_modals.py   — RecipeFormModal and RecipePickerModal tests (15 tests)
   test_export.py          — CSV export function tests (10 tests)
 ```
 
-**323 total tests**
+**324 total tests**
 
 ## Roll Lifecycle
 

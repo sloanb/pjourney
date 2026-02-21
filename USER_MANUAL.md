@@ -305,7 +305,16 @@ pjourney works for digital shooters too. When adding a camera, set the type to *
 
 ## Part 4 — Admin & Maintenance
 
-Press `a` from the Dashboard to open the Admin screen.
+Press `a` from the Dashboard to open the Admin screen. The Admin screen is organised into four tabs:
+
+| Key | Tab |
+|-----|-----|
+| `1` | Database |
+| `2` | Cloud Sync |
+| `3` | Recipes |
+| `4` | Users |
+
+You can also click a tab to switch to it.
 
 ### Backup Your Database
 
