@@ -153,9 +153,10 @@ class SelfDevelopModal(ModalScreen[tuple[RollDevelopment, list[DevelopmentStep]]
         align: center middle;
     }
     #self-form-box {
-        width: 70;
+        width: 100;
+        max-width: 95%;
         height: auto;
-        max-height: 40;
+        max-height: 90%;
         border: heavy $accent;
         padding: 1 2;
         background: $surface;
@@ -163,8 +164,28 @@ class SelfDevelopModal(ModalScreen[tuple[RollDevelopment, list[DevelopmentStep]]
     #self-form-box Label {
         margin: 1 0 0 0;
     }
+    #self-form-scroll {
+        height: auto;
+    }
+    #self-top-row {
+        height: auto;
+    }
+    #self-top-left {
+        width: 1fr;
+        height: auto;
+        padding: 0 1;
+    }
+    #self-top-right {
+        width: auto;
+        height: auto;
+        padding: 0 1;
+        content-align: left bottom;
+    }
+    #load-recipe-btn {
+        margin: 1 0 0 0;
+    }
     #steps-scroll {
-        height: 12;
+        height: 6;
         border: solid $accent;
         margin: 1 0;
     }
@@ -192,18 +213,22 @@ class SelfDevelopModal(ModalScreen[tuple[RollDevelopment, list[DevelopmentStep]]
     def compose(self) -> ComposeResult:
         with Vertical(id="self-form-box"):
             yield Static("Self Development", markup=False)
-            yield Label("Process Type")
-            yield Select(
-                [(p, p) for p in PROCESS_TYPES],
-                value="B&W",
-                id="process-select",
-            )
-            yield Button("Load Recipe", id="load-recipe-btn")
-            yield Label("Development Steps")
-            yield VerticalScroll(id="steps-scroll")
-            yield Button("+ Add Step", id="add-step-btn")
-            yield Label("Notes")
-            yield Input(id="dev-notes")
+            with VerticalScroll(id="self-form-scroll"):
+                with Horizontal(id="self-top-row"):
+                    with Vertical(id="self-top-left"):
+                        yield Label("Process Type")
+                        yield Select(
+                            [(p, p) for p in PROCESS_TYPES],
+                            value="B&W",
+                            id="process-select",
+                        )
+                    with Vertical(id="self-top-right"):
+                        yield Button("Load Recipe", id="load-recipe-btn")
+                yield Label("Development Steps")
+                yield VerticalScroll(id="steps-scroll")
+                yield Button("+ Add Step", id="add-step-btn")
+                yield Label("Notes")
+                yield Input(id="dev-notes")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -293,11 +318,21 @@ class LabDevelopModal(ModalScreen[tuple[RollDevelopment, list[DevelopmentStep]] 
         align: center middle;
     }
     #lab-form-box {
-        width: 60;
+        width: 100;
+        max-width: 95%;
         height: auto;
+        max-height: 90%;
         border: heavy $accent;
         padding: 1 2;
         background: $surface;
+    }
+    #form-columns {
+        height: auto;
+    }
+    #col-left, #col-right {
+        width: 1fr;
+        height: auto;
+        padding: 0 1;
     }
     #lab-form-box Label {
         margin: 1 0 0 0;
@@ -314,14 +349,17 @@ class LabDevelopModal(ModalScreen[tuple[RollDevelopment, list[DevelopmentStep]] 
     def compose(self) -> ComposeResult:
         with Vertical(id="lab-form-box"):
             yield Static("Send to Lab", markup=False)
-            yield Label("Lab Name *")
-            yield Input(id="lab-name")
-            yield Label("Lab Contact (phone/email)")
-            yield Input(id="lab-contact")
-            yield Label("Cost")
-            yield Input(id="lab-cost", placeholder="e.g. 12.50")
-            yield Label("Notes")
-            yield Input(id="dev-notes")
+            with Horizontal(id="form-columns"):
+                with Vertical(id="col-left"):
+                    yield Label("Lab Name *")
+                    yield Input(id="lab-name")
+                    yield Label("Lab Contact (phone/email)")
+                    yield Input(id="lab-contact")
+                with Vertical(id="col-right"):
+                    yield Label("Cost")
+                    yield Input(id="lab-cost", placeholder="e.g. 12.50")
+                    yield Label("Notes")
+                    yield Input(id="dev-notes")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -505,11 +543,21 @@ class CreateRollModal(ModalScreen[tuple[int, str, str, str] | None]):
         align: center middle;
     }
     #form-box {
-        width: 60;
+        width: 100;
+        max-width: 95%;
         height: auto;
+        max-height: 90%;
         border: heavy $accent;
         padding: 1 2;
         background: $surface;
+    }
+    #form-columns {
+        height: auto;
+    }
+    #col-left, #col-right {
+        width: 1fr;
+        height: auto;
+        padding: 0 1;
     }
     #form-box Label {
         margin: 1 0 0 0;
@@ -536,17 +584,20 @@ class CreateRollModal(ModalScreen[tuple[int, str, str, str] | None]):
             options += [(f"{s.brand} {s.name}", s.id) for s in digital]
         with Vertical(id="form-box"):
             yield Static("Create New Roll", markup=False)
-            yield Label("Film Stock")
-            if options:
-                yield Select(options, id="stock-select")
-            else:
-                yield Static("No film stocks available. Add one first.", markup=False)
-            yield Label("Title (optional)")
-            yield Input(id="title", max_length=60)
-            yield Label("Location (optional)")
-            yield Input(id="location")
-            yield Label("Notes")
-            yield Input(id="notes")
+            with Horizontal(id="form-columns"):
+                with Vertical(id="col-left"):
+                    yield Label("Film Stock")
+                    if options:
+                        yield Select(options, id="stock-select")
+                    else:
+                        yield Static("No film stocks available. Add one first.", markup=False)
+                    yield Label("Title (optional)")
+                    yield Input(id="title", max_length=60)
+                with Vertical(id="col-right"):
+                    yield Label("Location (optional)")
+                    yield Input(id="location")
+                    yield Label("Notes")
+                    yield Input(id="notes")
             with Horizontal(classes="form-buttons"):
                 yield Button("Create", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -577,11 +628,21 @@ class LoadRollModal(ModalScreen[tuple[int, int | None, float, str] | None]):
         align: center middle;
     }
     #form-box {
-        width: 60;
+        width: 100;
+        max-width: 95%;
         height: auto;
+        max-height: 90%;
         border: heavy $accent;
         padding: 1 2;
         background: $surface;
+    }
+    #form-columns {
+        height: auto;
+    }
+    #col-left, #col-right {
+        width: 1fr;
+        height: auto;
+        padding: 0 1;
     }
     #form-box Label {
         margin: 1 0 0 0;
@@ -616,17 +677,20 @@ class LoadRollModal(ModalScreen[tuple[int, int | None, float, str] | None]):
             push_pull_options.append((label, val))
         with Vertical(id="form-box"):
             yield Static("Load Roll into Camera", markup=False)
-            yield Label("Camera")
-            if camera_options:
-                yield Select(camera_options, id="camera-select")
-            else:
-                yield Static("No cameras available. Add one first.", markup=False)
-            yield Label("Lens (installed on camera)")
-            yield Select(lens_options, value=0, id="lens-select")
-            yield Label("Push/Pull (stops)")
-            yield Select(push_pull_options, value=self._current_push_pull, id="push-pull-select")
-            yield Label("Location (optional)")
-            yield Input(id="location")
+            with Horizontal(id="form-columns"):
+                with Vertical(id="col-left"):
+                    yield Label("Camera")
+                    if camera_options:
+                        yield Select(camera_options, id="camera-select")
+                    else:
+                        yield Static("No cameras available. Add one first.", markup=False)
+                    yield Label("Lens (installed on camera)")
+                    yield Select(lens_options, value=0, id="lens-select")
+                with Vertical(id="col-right"):
+                    yield Label("Push/Pull (stops)")
+                    yield Select(push_pull_options, value=self._current_push_pull, id="push-pull-select")
+                    yield Label("Location (optional)")
+                    yield Input(id="location")
             with Horizontal(classes="form-buttons"):
                 yield Button("Load", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
