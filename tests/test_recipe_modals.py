@@ -115,6 +115,18 @@ class TestRecipeFormModal:
         assert len(steps) == 1
         assert steps[0].chemical_name == "D-76"
 
+    async def test_buttons_visible_on_small_terminal(self, conn):
+        user = db.get_users(conn)[0]
+        app = ModalTestApp(conn)
+        app.current_user = user
+        async with app.run_test(size=(80, 24)) as pilot:
+            await app.push_screen(RecipeFormModal())
+            await pilot.pause()
+            save_btn = app.screen.query_one("#save-btn", Button)
+            cancel_btn = app.screen.query_one("#cancel-btn", Button)
+            assert save_btn.region.y + save_btn.region.height <= 24
+            assert cancel_btn.region.y + cancel_btn.region.height <= 24
+
     async def test_save_without_name_does_nothing(self, conn):
         user = db.get_users(conn)[0]
         app = ModalTestApp(conn)

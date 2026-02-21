@@ -12,7 +12,9 @@ from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Input, Label, Select, Static
+from textual.widgets import (
+    Button, Footer, Input, Label, Select, Static, TabbedContent, TabPane,
+)
 
 from pjourney.widgets.app_header import AppHeader
 
@@ -362,20 +364,37 @@ class RecipeFormModal(ModalScreen[tuple[DevRecipe, list[DevRecipeStep]] | None])
         align: center middle;
     }
     #recipe-form-box {
-        width: 70;
-        height: auto;
-        max-height: 40;
+        width: 76;
+        height: 80%;
+        max-height: 36;
         border: heavy $accent;
-        padding: 1 2;
         background: $surface;
+        padding: 1 2 0 2;
     }
-    #recipe-form-box Label {
+    #recipe-form-box > Static {
+        height: auto;
+    }
+    #recipe-content {
+        height: 1fr;
+    }
+    #recipe-meta-row {
+        height: auto;
+    }
+    .meta-col {
+        width: 1fr;
+        height: auto;
+        margin: 0 1 0 0;
+    }
+    .meta-col Label {
+        margin: 1 0 0 0;
+    }
+    #recipe-steps-label {
         margin: 1 0 0 0;
     }
     #recipe-steps-scroll {
-        height: 12;
+        height: auto;
         border: solid $accent;
-        margin: 1 0;
+        margin: 0 0 1 0;
     }
     .step-row {
         height: auto;
@@ -385,9 +404,16 @@ class RecipeFormModal(ModalScreen[tuple[DevRecipe, list[DevRecipeStep]] | None])
         width: 1fr;
         margin: 0 1 0 0;
     }
+    #add-step-btn {
+        height: auto;
+    }
+    #recipe-notes-label {
+        margin: 1 0 0 0;
+    }
     .form-buttons {
         height: auto;
-        margin: 1 0 0 0;
+        padding: 1 0;
+        border-top: solid $accent;
     }
     .form-buttons Button {
         margin: 0 1;
@@ -410,25 +436,29 @@ class RecipeFormModal(ModalScreen[tuple[DevRecipe, list[DevRecipeStep]] | None])
                 "Edit Recipe" if self._recipe else "Create Recipe",
                 markup=False,
             )
-            yield Label("Recipe Name")
-            yield Input(
-                id="recipe-name",
-                value=self._recipe.name if self._recipe else "",
-            )
-            yield Label("Process Type")
-            yield Select(
-                [(p, p) for p in PROCESS_TYPES],
-                value=self._recipe.process_type if self._recipe else "B&W",
-                id="process-select",
-            )
-            yield Label("Steps")
-            yield VerticalScroll(id="recipe-steps-scroll")
-            yield Button("+ Add Step", id="add-step-btn")
-            yield Label("Notes")
-            yield Input(
-                id="recipe-notes",
-                value=self._recipe.notes if self._recipe else "",
-            )
+            with VerticalScroll(id="recipe-content"):
+                with Horizontal(id="recipe-meta-row"):
+                    with Vertical(classes="meta-col"):
+                        yield Label("Recipe Name")
+                        yield Input(
+                            id="recipe-name",
+                            value=self._recipe.name if self._recipe else "",
+                        )
+                    with Vertical(classes="meta-col"):
+                        yield Label("Process Type")
+                        yield Select(
+                            [(p, p) for p in PROCESS_TYPES],
+                            value=self._recipe.process_type if self._recipe else "B&W",
+                            id="process-select",
+                        )
+                yield Label("Steps", id="recipe-steps-label")
+                yield Vertical(id="recipe-steps-scroll")
+                yield Button("+ Add Step", id="add-step-btn")
+                yield Label("Notes", id="recipe-notes-label")
+                yield Input(
+                    id="recipe-notes",
+                    value=self._recipe.notes if self._recipe else "",
+                )
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -454,7 +484,7 @@ class RecipeFormModal(ModalScreen[tuple[DevRecipe, list[DevRecipeStep]] | None])
     ) -> None:
         n = self._step_count
         self._step_count += 1
-        scroll = self.query_one("#recipe-steps-scroll", VerticalScroll)
+        scroll = self.query_one("#recipe-steps-scroll", Vertical)
         row = Horizontal(id=f"step-row-{n}", classes="step-row")
         scroll.mount(row)
         row.mount(Input(placeholder="Chemical", id=f"step-{n}-chemical", value=chemical))
@@ -512,46 +542,51 @@ class RecipeFormModal(ModalScreen[tuple[DevRecipe, list[DevRecipeStep]] | None])
 class AdminScreen(Screen):
     BINDINGS = [
         ("escape", "go_back", "Back"),
+        ("1", "show_tab('tab-db')", "Database"),
+        ("2", "show_tab('tab-cloud')", "Cloud"),
+        ("3", "show_tab('tab-recipes')", "Recipes"),
+        ("4", "show_tab('tab-users')", "Users"),
     ]
 
     CSS = """
     AdminScreen {
         layout: vertical;
     }
-    #admin-sections {
+    #status-label {
+        height: auto;
+        margin: 0 2;
+        color: $success;
+    }
+    #admin-tabs {
         height: 1fr;
-        padding: 0 2;
-        overflow-y: auto;
+        padding: 0 1;
+    }
+    #admin-tabs TabPane {
+        padding: 1 1;
     }
     #db-section {
         height: auto;
-        border: solid $accent;
-        padding: 0 1;
-        margin: 0;
     }
     #db-section Button {
         margin: 0 1;
     }
     #cloud-section {
         height: auto;
-        border: solid $accent;
-        padding: 0 1;
-        margin: 0;
     }
     #cloud-status-label {
         margin: 0;
     }
-    #cloud-actions Button {
-        margin: 0 1;
-    }
     #cloud-actions {
         height: auto;
     }
+    #cloud-actions Button {
+        margin: 0 1;
+    }
     #recipe-section {
-        height: auto;
-        border: solid $accent;
-        padding: 0 1;
-        margin: 0;
+        height: 1fr;
+    }
+    #recipe-table {
+        height: 1fr;
     }
     #recipe-actions {
         height: auto;
@@ -560,10 +595,10 @@ class AdminScreen(Screen):
         margin: 0 1;
     }
     #user-section {
-        height: auto;
-        min-height: 12;
-        border: solid $accent;
-        padding: 0 1;
+        height: 1fr;
+    }
+    #user-table {
+        height: 1fr;
     }
     #user-actions {
         height: auto;
@@ -571,10 +606,6 @@ class AdminScreen(Screen):
     }
     #user-actions Button {
         margin: 0 1;
-    }
-    #status-label {
-        margin: 0;
-        color: $success;
     }
     #admin-back {
         height: 3;
@@ -585,36 +616,40 @@ class AdminScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield AppHeader()
-        with Vertical(id="admin-sections"):
-            with Vertical(id="db-section"):
-                yield Static("Database Maintenance", markup=False)
-                yield Label("", id="status-label")
-                with Horizontal():
-                    yield Button("Backup Database", id="backup-btn")
-                    yield Button("Vacuum Database", id="vacuum-btn")
-                    yield Button("Export Data (CSV)", id="export-btn")
-            with Vertical(id="cloud-section"):
-                yield Static("Cloud Sync", markup=False)
-                yield Label("Not connected", id="cloud-status-label")
-                with Horizontal(id="cloud-actions"):
-                    yield Button("Link Account", id="link-btn")
-                    yield Button("Select Folder", id="folder-btn", disabled=True)
-                    yield Button("Sync Now", id="sync-btn", disabled=True)
-                    yield Button("Restore", id="restore-btn", disabled=True)
-                    yield Button("Disconnect", id="disconnect-btn", disabled=True)
-            with Vertical(id="recipe-section"):
-                yield Static("Development Recipes", markup=False)
-                yield InventoryTable(id="recipe-table")
-                with Horizontal(id="recipe-actions"):
-                    yield Button("Create Recipe", id="create-recipe-btn")
-                    yield Button("Edit Recipe", id="edit-recipe-btn")
-                    yield Button("Delete Recipe", id="del-recipe-btn", variant="error")
-            with Vertical(id="user-section"):
-                yield Static("User Management", markup=False)
-                yield InventoryTable(id="user-table")
-                with Horizontal(id="user-actions"):
-                    yield Button("Create User", id="create-user-btn")
-                    yield Button("Delete User", id="del-user-btn", variant="error")
+        yield Label("", id="status-label")
+        with TabbedContent(id="admin-tabs"):
+            with TabPane("Database", id="tab-db"):
+                with Vertical(id="db-section"):
+                    yield Static("Database Maintenance", markup=False)
+                    with Horizontal():
+                        yield Button("Backup Database", id="backup-btn")
+                        yield Button("Vacuum Database", id="vacuum-btn")
+                        yield Button("Export Data (CSV)", id="export-btn")
+            with TabPane("Cloud Sync", id="tab-cloud"):
+                with Vertical(id="cloud-section"):
+                    yield Static("Cloud Sync", markup=False)
+                    yield Label("Not connected", id="cloud-status-label")
+                    with Horizontal(id="cloud-actions"):
+                        yield Button("Link Account", id="link-btn")
+                        yield Button("Select Folder", id="folder-btn", disabled=True)
+                        yield Button("Sync Now", id="sync-btn", disabled=True)
+                        yield Button("Restore", id="restore-btn", disabled=True)
+                        yield Button("Disconnect", id="disconnect-btn", disabled=True)
+            with TabPane("Recipes", id="tab-recipes"):
+                with Vertical(id="recipe-section"):
+                    yield Static("Development Recipes", markup=False)
+                    yield InventoryTable(id="recipe-table")
+                    with Horizontal(id="recipe-actions"):
+                        yield Button("Create Recipe", id="create-recipe-btn")
+                        yield Button("Edit Recipe", id="edit-recipe-btn")
+                        yield Button("Delete Recipe", id="del-recipe-btn", variant="error")
+            with TabPane("Users", id="tab-users"):
+                with Vertical(id="user-section"):
+                    yield Static("User Management", markup=False)
+                    yield InventoryTable(id="user-table")
+                    with Horizontal(id="user-actions"):
+                        yield Button("Create User", id="create-user-btn")
+                        yield Button("Delete User", id="del-user-btn", variant="error")
         with Horizontal(id="admin-back"):
             yield Button("Back [Esc]", id="back-btn")
         yield Footer()
@@ -627,6 +662,15 @@ class AdminScreen(Screen):
         self._refresh_users()
         self._refresh_recipes()
         self._refresh_cloud_status()
+
+    def on_tabbed_content_tab_activated(
+        self, event: TabbedContent.TabActivated
+    ) -> None:
+        if event.pane.id == "tab-cloud":
+            self._refresh_cloud_status()
+
+    def action_show_tab(self, tab_id: str) -> None:
+        self.query_one(TabbedContent).active = tab_id
 
     # --- Cloud helpers ---
 
