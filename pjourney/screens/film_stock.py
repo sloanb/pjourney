@@ -2,7 +2,7 @@
 
 from textual import on
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Footer, Input, Label, Select, Static
 
@@ -31,7 +31,8 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
         align: center middle;
     }
     #form-box {
-        width: 70;
+        width: 100;
+        max-width: 95%;
         height: auto;
         max-height: 90%;
         border: heavy $accent;
@@ -40,6 +41,25 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
     }
     #form-box Label {
         margin: 1 0 0 0;
+    }
+    #form-scroll {
+        height: auto;
+    }
+    #form-columns {
+        height: auto;
+    }
+    #col-left, #col-right {
+        width: 1fr;
+        height: auto;
+        padding: 0 1;
+    }
+    #analog-columns {
+        height: auto;
+    }
+    #analog-left, #analog-right {
+        width: 1fr;
+        height: auto;
+        padding: 0 1;
     }
     .form-buttons {
         height: auto;
@@ -58,37 +78,44 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
         s = self.stock
         with Vertical(id="form-box"):
             yield Static("Edit Film Stock" if s.id else "Add Film Stock", markup=False)
-            yield Label("Media Type")
-            yield Select(
-                MEDIA_TYPES,
-                value=s.media_type,
-                id="media_type",
-            )
-            yield Label("Brand (e.g. Kodak, Ilford, SanDisk)")
-            yield Input(value=s.brand, id="brand")
-            yield Label("Name (e.g. Portra 400, HP5 Plus, Primary Card)")
-            yield Input(value=s.name, id="name")
-            with Vertical(id="analog-fields"):
-                yield Label("Film Type")
-                yield Select(
-                    FILM_TYPES,
-                    value=s.type,
-                    id="type",
-                )
-                yield Label("ISO")
-                yield Input(value=str(s.iso), id="iso")
-                yield Label("Format")
-                yield Select(
-                    FILM_FORMATS,
-                    value=s.format,
-                    id="format",
-                )
-                yield Label("Frames Per Roll")
-                yield Input(value=str(s.frames_per_roll), id="frames_per_roll")
-                yield Label("Quantity On Hand")
-                yield Input(value=str(s.quantity_on_hand), id="quantity_on_hand")
-            yield Label("Notes")
-            yield Input(value=s.notes, id="notes")
+            with VerticalScroll(id="form-scroll"):
+                with Horizontal(id="form-columns"):
+                    with Vertical(id="col-left"):
+                        yield Label("Media Type")
+                        yield Select(
+                            MEDIA_TYPES,
+                            value=s.media_type,
+                            id="media_type",
+                        )
+                        yield Label("Brand (e.g. Kodak, Ilford, SanDisk)")
+                        yield Input(value=s.brand, id="brand")
+                    with Vertical(id="col-right"):
+                        yield Label("Name (e.g. Portra 400, HP5 Plus, Primary Card)")
+                        yield Input(value=s.name, id="name")
+                        yield Label("Notes")
+                        yield Input(value=s.notes, id="notes")
+                with Vertical(id="analog-fields"):
+                    with Horizontal(id="analog-columns"):
+                        with Vertical(id="analog-left"):
+                            yield Label("Film Type")
+                            yield Select(
+                                FILM_TYPES,
+                                value=s.type,
+                                id="type",
+                            )
+                            yield Label("ISO")
+                            yield Input(value=str(s.iso), id="iso")
+                            yield Label("Quantity On Hand")
+                            yield Input(value=str(s.quantity_on_hand), id="quantity_on_hand")
+                        with Vertical(id="analog-right"):
+                            yield Label("Format")
+                            yield Select(
+                                FILM_FORMATS,
+                                value=s.format,
+                                id="format",
+                            )
+                            yield Label("Frames Per Roll")
+                            yield Input(value=str(s.frames_per_roll), id="frames_per_roll")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
