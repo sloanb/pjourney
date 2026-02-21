@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-pjourney — a Textual TUI application for managing camera collections, lenses, and film inventory. Tracks equipment, film rolls through their lifecycle (fresh → loaded → shooting → finished → developing → developed), and per-frame shooting details.
+pjourney — a Textual TUI application for managing camera collections, lenses, and film inventory. Tracks equipment, film rolls through their lifecycle (fresh → loaded → shooting → finished → developing → developed; self-develop skips directly to developed), and per-frame shooting details.
 
 ## Setup
 
@@ -37,7 +37,7 @@ python -m pytest tests/ -v
 - `pjourney/cloud/` — provider.py (CloudProvider ABC, dataclasses, CloudProviderError), credentials.py (CredentialStore wrapping OS keyring), dropbox_provider.py (DropboxProvider: PKCE OAuth, folder browse, upload/download/disconnect)
 - `pjourney/errors.py` — ErrorCode enum (PJ-DB01…PJ-CLD05, PJ-APP01) and app_error() toast helper
 - `docs/` — ERROR_CODES.md (user-facing error code reference)
-- `tests/` — test_database.py (68 CRUD tests), test_models.py (22 tests), test_errors.py (14 tests), test_dev_modals.py (21 tests), test_confirm_modal.py (16 tests), test_camera_form_modal.py (9 tests), test_cloud_settings.py (6 tests), test_cloud_provider.py (11 tests), test_dropbox_provider.py (25 tests), test_cloud_modals.py (22 tests)
+- `tests/` — test_database.py (68 CRUD tests), test_models.py (22 tests), test_errors.py (14 tests), test_dev_modals.py (27 tests), test_confirm_modal.py (16 tests), test_camera_form_modal.py (9 tests), test_cloud_settings.py (6 tests), test_cloud_provider.py (11 tests), test_dropbox_provider.py (25 tests), test_cloud_modals.py (22 tests)
 
 ### Screen flow
 

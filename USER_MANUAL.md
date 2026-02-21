@@ -264,19 +264,21 @@ When you have exposed all the frames and rewound the film, select the roll and p
 
 ### Step 6 — Send for Development
 
-When you are ready to develop the roll, press `s` to advance to **Developing**. pjourney asks how the roll will be developed:
+When you are ready to develop the roll, press `s`. pjourney asks how the roll will be developed:
 
-- **Self Develop** — opens a form to record the process type (B&W, C-41, E-6, etc.) and each development step (chemical, temperature, time, agitation).
-- **Send to Lab** — opens a form to record the lab name, contact details, and cost.
+- **Self Develop** — opens a form to record the process type (B&W, C-41, E-6, etc.) and each development step (chemical, temperature, time, agitation). After pressing **Save**, the roll advances directly to **Developed** in one step — the Developing stage is skipped because you process the roll yourself and the result is immediate.
+- **Send to Lab** — opens a form to record the lab name, contact details, and cost. After pressing **Save**, the status advances to **Developing** and the sent-for-development date is recorded.
 - **Cancel** — returns to the Rolls screen without advancing the status.
 
-After completing the form and pressing **Save**, the status advances to **Developing** and the sent-for-development date is recorded. To review these details later, select the roll and press `i` (Dev Info).
+To review development details later, select the roll and press `i` (Dev Info).
 
 ---
 
-### Step 7 — Mark as Developed
+### Step 7 — Mark as Developed (Lab Only)
 
-When your negatives come back, press `s` one final time to mark the roll as **Developed**. The developed date is recorded.
+If you sent the roll to a lab, press `s` one final time when your negatives come back to mark the roll as **Developed**. The developed date is recorded.
+
+If you self-developed, the roll is already **Developed** after Step 6 — this step does not apply.
 
 You now have a complete record of the roll: when it was loaded, finished, sent, and developed — with per-frame technical notes attached.
 
@@ -286,9 +288,10 @@ You now have a complete record of the roll: when it was loaded, finished, sent, 
 
 ```
 Fresh → Loaded → Shooting → Finished → Developing → Developed
+                                    ↘ (Self Develop) → Developed
 ```
 
-Each transition records a date automatically. Use the filter buttons at the top of the Rolls screen to see only rolls at a particular stage.
+Lab develop follows the full path through Developing. Self develop skips Developing and advances directly to Developed. Each transition records a date automatically. Use the filter buttons at the top of the Rolls screen to see only rolls at a particular stage.
 
 ---
 

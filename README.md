@@ -69,7 +69,7 @@ tests/
   test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests (16 tests)
   test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests (9 tests)
   test_errors.py          — ErrorCode enum and app_error() helper tests (14 tests)
-  test_dev_modals.py      — Development flow modal tests (21 tests)
+  test_dev_modals.py      — Development flow modal tests (27 tests)
   test_cloud_settings.py  — cloud_settings DB CRUD tests (6 tests)
   test_cloud_provider.py  — CloudProvider ABC and CredentialStore tests (11 tests)
   test_dropbox_provider.py — DropboxProvider tests with mocked SDK (25 tests)
@@ -83,6 +83,8 @@ Fresh → Loaded → Shooting → Finished → Developing → Developed
 ```
 
 Each transition records a date automatically. Frames are pre-created when a roll is started, based on the frames-per-roll setting of the selected film stock.
+
+When advancing from Finished, the user chooses a development path: **Lab Develop** advances the roll to Developing (waiting on the lab), while **Self Develop** records the process details and advances the roll directly to Developed in one step, skipping the Developing stage.
 
 ## Architecture Notes
 
