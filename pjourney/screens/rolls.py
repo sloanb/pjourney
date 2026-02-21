@@ -679,8 +679,14 @@ class RollsScreen(Screen):
                 try:
                     dev.roll_id = roll.id
                     db.save_roll_development(self.app.db_conn, dev, steps)
-                    roll.status = "developing"
-                    roll.sent_for_dev_date = date.today()
+                    today = date.today()
+                    if dev.dev_type == "self":
+                        roll.status = "developed"
+                        roll.sent_for_dev_date = today
+                        roll.developed_date = today
+                    else:
+                        roll.status = "developing"
+                        roll.sent_for_dev_date = today
                     db.update_roll(self.app.db_conn, roll)
                     self._refresh()
                 except Exception:
