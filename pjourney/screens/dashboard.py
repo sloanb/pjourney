@@ -180,7 +180,7 @@ class DashboardScreen(Screen):
             low_stock_section = self.query_one("#low-stock-section", Vertical)
             low_stock_list = self.query_one("#low-stock-list", Vertical)
             low_stock_list.remove_children()
-            has_alerts = alerts["out_of_stock"] or alerts["low_stock"]
+            has_alerts = bool(alerts["out_of_stock"] or alerts["low_stock"])
             low_stock_section.display = has_alerts
             if has_alerts:
                 for item in alerts["out_of_stock"]:

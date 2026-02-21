@@ -70,6 +70,7 @@ tests/
   test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests (9 tests)
   test_errors.py          — ErrorCode enum and app_error() helper tests (14 tests)
   test_dev_modals.py      — Development flow modal tests (28 tests)
+  test_dashboard.py       — DashboardScreen low-stock alert rendering tests (2 tests)
   test_cloud_settings.py  — cloud_settings DB CRUD tests (6 tests)
   test_cloud_provider.py  — CloudProvider ABC and CredentialStore tests (11 tests)
   test_dropbox_provider.py — DropboxProvider tests with mocked SDK (25 tests)
