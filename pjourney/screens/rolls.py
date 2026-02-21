@@ -909,6 +909,36 @@ class RollsScreen(Screen):
         if not roll:
             return
         if roll.status == "fresh":
+            def on_confirmed(confirmed: bool) -> None:
+                if not confirmed:
+                    return
+                def on_load_result(result: tuple[int, int | None, float, str] | None) -> None:
+                    if result is None:
+                        return
+                    camera_id, lens_id, push_pull, location = result
+                    try:
+                        roll.camera_id = camera_id
+                        roll.lens_id = lens_id
+                        roll.push_pull_stops = push_pull
+                        roll.location = location
+                        roll.status = "loaded"
+                        roll.loaded_date = date.today()
+                        db.update_roll(self.app.db_conn, roll)
+                        db.set_roll_frames_lens(self.app.db_conn, roll.id, lens_id)
+                        self._refresh()
+                    except Exception:
+                        app_error(self, ErrorCode.DB_SAVE)
+                self.app.push_screen(
+                    LoadRollModal(current_push_pull=roll.push_pull_stops), on_load_result
+                )
+            self.app.push_screen(
+                ConfirmModal(
+                    "The film is not yet loaded. Would you like to load it?",
+                    confirm_label="Yes",
+                    confirm_variant="primary",
+                ),
+                on_confirmed,
+            )
             return
         idx = ROLL_STATUSES.index(roll.status)
         if idx >= len(ROLL_STATUSES) - 1:

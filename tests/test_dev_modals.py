@@ -14,10 +14,12 @@ from pjourney.screens.rolls import (
     DevelopmentInfoModal,
     DevelopmentTypeModal,
     LabDevelopModal,
+    LoadRollModal,
     RollsScreen,
     SelfDevelopModal,
     _parse_duration,
 )
+from pjourney.widgets.confirm_modal import ConfirmModal
 
 
 # ---------------------------------------------------------------------------
@@ -467,7 +469,7 @@ class TestAdvanceStatusFreshGuard:
         return user, roll
 
     async def test_advance_status_blocks_fresh_roll(self, conn):
-        """Pressing advance status on a fresh roll must not change its status."""
+        """Pressing advance on a fresh roll shows a ConfirmModal; cancelling keeps it fresh."""
         user, roll = self._setup_fresh_roll(conn)
         app = RollsFlowTestApp(conn, user)
         async with app.run_test() as pilot:
@@ -475,9 +477,42 @@ class TestAdvanceStatusFreshGuard:
             await app.push_screen(rolls_screen)
             await pilot.pause()
 
-            # Mock _get_selected_id to return our fresh roll
             rolls_screen._get_selected_id = lambda: roll.id
             rolls_screen.action_advance_status()
+            await pilot.pause()
+
+            # A ConfirmModal should be on top
+            assert isinstance(app.screen, ConfirmModal)
+            # Cancel the prompt
+            app.screen.query_one("#cancel-btn", Button).press()
+            await pilot.pause()
+
+            updated = db.get_roll(conn, roll.id)
+            assert updated.status == "fresh"
+
+    async def test_advance_status_fresh_roll_yes_opens_load_modal(self, conn):
+        """Pressing Yes on the fresh-roll prompt opens a LoadRollModal."""
+        user, roll = self._setup_fresh_roll(conn)
+        app = RollsFlowTestApp(conn, user)
+        async with app.run_test() as pilot:
+            rolls_screen = RollsScreen()
+            await app.push_screen(rolls_screen)
+            await pilot.pause()
+
+            rolls_screen._get_selected_id = lambda: roll.id
+            rolls_screen.action_advance_status()
+            await pilot.pause()
+
+            # Confirm the prompt
+            assert isinstance(app.screen, ConfirmModal)
+            app.screen.query_one("#confirm-btn", Button).press()
+            await pilot.pause()
+
+            # LoadRollModal should now be on top
+            assert isinstance(app.screen, LoadRollModal)
+
+            # Cancel the load modal; roll stays fresh
+            app.screen.query_one("#cancel-btn", Button).press()
             await pilot.pause()
 
             updated = db.get_roll(conn, roll.id)

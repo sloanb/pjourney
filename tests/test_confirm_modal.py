@@ -19,9 +19,11 @@ from pjourney.widgets.confirm_modal import ConfirmModal
 class ModalTestApp(App):
     """Tiny app that can push a ConfirmModal and capture the result."""
 
-    def __init__(self, message: str = "Delete this?") -> None:
+    def __init__(self, message: str = "Delete this?", confirm_label: str = "Delete", confirm_variant: str = "error") -> None:
         super().__init__()
         self.message = message
+        self._confirm_label = confirm_label
+        self._confirm_variant = confirm_variant
         self.dismissed_value: bool | None = None
 
     def compose(self) -> ComposeResult:
@@ -30,7 +32,10 @@ class ModalTestApp(App):
     async def show_confirm(self) -> None:
         def on_dismiss(value: bool) -> None:
             self.dismissed_value = value
-        await self.push_screen(ConfirmModal(self.message), on_dismiss)
+        await self.push_screen(
+            ConfirmModal(self.message, confirm_label=self._confirm_label, confirm_variant=self._confirm_variant),
+            on_dismiss,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +97,24 @@ class TestConfirmModal:
             await app.show_confirm()
             await pilot.click("#cancel-btn")
             assert len(app.screen_stack) == 1
+
+    async def test_custom_confirm_label(self):
+        """ConfirmModal with custom label shows that label on the confirm button."""
+        from textual.widgets import Button
+        app = ModalTestApp(confirm_label="Yes", confirm_variant="primary")
+        async with app.run_test() as pilot:
+            await app.show_confirm()
+            btn = app.screen.query_one("#confirm-btn", Button)
+            assert btn.label.plain == "Yes"
+
+    async def test_custom_confirm_variant(self):
+        """ConfirmModal with custom variant uses that variant on the confirm button."""
+        from textual.widgets import Button
+        app = ModalTestApp(confirm_label="Yes", confirm_variant="primary")
+        async with app.run_test() as pilot:
+            await app.show_confirm()
+            btn = app.screen.query_one("#confirm-btn", Button)
+            assert btn.variant == "primary"
 
 
 # ---------------------------------------------------------------------------

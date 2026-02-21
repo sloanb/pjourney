@@ -33,15 +33,17 @@ class ConfirmModal(ModalScreen[bool]):
     }
     """
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, confirm_label: str = "Delete", confirm_variant: str = "error") -> None:
         super().__init__()
         self.message = message
+        self._confirm_label = confirm_label
+        self._confirm_variant = confirm_variant
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-box"):
             yield Static(self.message, id="confirm-message", markup=False)
             with Horizontal(id="confirm-buttons"):
-                yield Button("Delete", id="confirm-btn", variant="error")
+                yield Button(self._confirm_label, id="confirm-btn", variant=self._confirm_variant)
                 yield Button("Cancel", id="cancel-btn")
 
     @on(Button.Pressed, "#confirm-btn")
