@@ -66,6 +66,10 @@ class TestUserCRUD:
         user = db.verify_password(conn, "testuser", "wrong")
         assert user is None
 
+    def test_verify_password_nonexistent_user_returns_none(self, conn):
+        result = db.verify_password(conn, "no_such_user", "anypassword")
+        assert result is None
+
     def test_delete_user(self, conn):
         user = db.create_user(conn, "testuser", "password123")
         db.delete_user(conn, user.id)
