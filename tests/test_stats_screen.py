@@ -1,7 +1,7 @@
 """Tests for the StatsScreen."""
 
+import datetime
 import tempfile
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -9,7 +9,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Label, Static
 
 from pjourney.db import database as db
-from pjourney.db.models import Camera, FilmStock, Roll, RollDevelopment
+from pjourney.db.models import Camera, FilmStock, Lens, Roll, RollDevelopment
 from pjourney.screens.stats import StatsScreen
 
 
@@ -116,3 +116,114 @@ class TestStatsScreen:
             await pilot.press("escape")
             await pilot.pause()
             assert not isinstance(app.screen, StatsScreen)
+
+
+class TestStatsScreenPopulatedData:
+    """Tests for stats screen sections that require data to exercise non-empty branches."""
+
+    async def test_shows_location_data_when_rolls_have_locations(self):
+        """When rolls have locations set, the locations section should display them."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.db"
+            conn = db.get_connection(path)
+            db.init_db(conn)
+            user = db.get_users(conn)[0]
+            stock = db.save_film_stock(conn, FilmStock(
+                user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+            ))
+            camera = db.save_camera(conn, Camera(user_id=user.id, name="Nikon F3", make="Nikon"))
+            roll = db.create_roll(conn, Roll(
+                user_id=user.id, film_stock_id=stock.id, camera_id=camera.id,
+                status="developed", location="Paris",
+            ), 36)
+            app = StatsTestApp(conn, user)
+            async with app.run_test() as pilot:
+                await app.push_screen(StatsScreen())
+                await pilot.pause()
+                content = app.screen.query_one("#locations-content", Static)
+                rendered = content.render()
+                text = rendered.plain if hasattr(rendered, "plain") else str(rendered)
+                assert "Paris" in text
+            conn.close()
+
+    async def test_shows_camera_data_in_equipment_when_rolls_exist(self):
+        """When rolls are associated with cameras, top cameras section populates."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.db"
+            conn = db.get_connection(path)
+            db.init_db(conn)
+            user = db.get_users(conn)[0]
+            stock = db.save_film_stock(conn, FilmStock(
+                user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+            ))
+            camera = db.save_camera(conn, Camera(user_id=user.id, name="Nikon F3", make="Nikon"))
+            db.create_roll(conn, Roll(
+                user_id=user.id, film_stock_id=stock.id, camera_id=camera.id,
+                status="developed",
+            ), 36)
+            app = StatsTestApp(conn, user)
+            async with app.run_test() as pilot:
+                await app.push_screen(StatsScreen())
+                await pilot.pause()
+                content = app.screen.query_one("#equipment-content", Static)
+                rendered = content.render()
+                text = rendered.plain if hasattr(rendered, "plain") else str(rendered)
+                assert "Nikon F3" in text
+            conn.close()
+
+    async def test_shows_lens_data_in_equipment_when_frames_logged(self):
+        """When frames are logged with lens assignments, top lenses section populates."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.db"
+            conn = db.get_connection(path)
+            db.init_db(conn)
+            user = db.get_users(conn)[0]
+            stock = db.save_film_stock(conn, FilmStock(
+                user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+            ))
+            camera = db.save_camera(conn, Camera(user_id=user.id, name="Nikon F3", make="Nikon"))
+            lens = db.save_lens(conn, Lens(user_id=user.id, name="50mm f/1.4", make="Nikon"))
+            roll = db.create_roll(conn, Roll(
+                user_id=user.id, film_stock_id=stock.id, camera_id=camera.id,
+                status="developed",
+            ), 36)
+            # Assign the lens to all frames so get_stats picks it up for top_lenses
+            db.set_roll_frames_lens(conn, roll.id, lens.id)
+            app = StatsTestApp(conn, user)
+            async with app.run_test() as pilot:
+                await app.push_screen(StatsScreen())
+                await pilot.pause()
+                content = app.screen.query_one("#equipment-content", Static)
+                rendered = content.render()
+                text = rendered.plain if hasattr(rendered, "plain") else str(rendered)
+                assert "50mm f/1.4" in text
+            conn.close()
+
+    async def test_shows_activity_bar_chart_when_rolls_have_loaded_dates(self):
+        """When rolls have loaded_date set, the activity bar chart renders."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.db"
+            conn = db.get_connection(path)
+            db.init_db(conn)
+            user = db.get_users(conn)[0]
+            stock = db.save_film_stock(conn, FilmStock(
+                user_id=user.id, brand="Kodak", name="Portra 400", frames_per_roll=36,
+            ))
+            camera = db.save_camera(conn, Camera(user_id=user.id, name="Nikon F3", make="Nikon"))
+            roll = db.create_roll(conn, Roll(
+                user_id=user.id, film_stock_id=stock.id, camera_id=camera.id,
+                status="developed",
+            ), 36)
+            # Set loaded_date so get_stats includes this roll in rolls_by_month
+            roll.loaded_date = datetime.date.today()
+            db.update_roll(conn, roll)
+            app = StatsTestApp(conn, user)
+            async with app.run_test() as pilot:
+                await app.push_screen(StatsScreen())
+                await pilot.pause()
+                content = app.screen.query_one("#activity-content", Static)
+                rendered = content.render()
+                text = rendered.plain if hasattr(rendered, "plain") else str(rendered)
+                # Should contain a month entry, not the "No activity" placeholder
+                assert "No activity data yet." not in text
+            conn.close()

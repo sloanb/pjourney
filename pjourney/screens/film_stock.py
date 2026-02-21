@@ -139,7 +139,7 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
         if media_type == "digital":
             s.type = "color"
             s.iso = 0
-            s.format = ""
+            s.format = "35mm"
             s.frames_per_roll = 0
             s.quantity_on_hand = 0
         else:
