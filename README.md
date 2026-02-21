@@ -64,7 +64,7 @@ pjourney/
 docs/
   ERROR_CODES.md          — User-facing error code reference
 tests/
-  test_database.py        — CRUD and schema tests (79 tests)
+  test_database.py        — CRUD and schema tests (80 tests)
   test_models.py          — Dataclass default/value tests (25 tests)
   test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests (16 tests)
   test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests (9 tests)
