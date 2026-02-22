@@ -43,6 +43,7 @@ class TestCameraModel:
         assert camera.year_built is None
         assert camera.year_purchased is None
         assert camera.purchased_from is None
+        assert camera.mount_type == ""
 
     def test_with_values(self):
         camera = Camera(
@@ -51,6 +52,10 @@ class TestCameraModel:
         )
         assert camera.name == "Nikon F3"
         assert camera.year_built == 1980
+
+    def test_mount_type(self):
+        camera = Camera(mount_type="Nikon F")
+        assert camera.mount_type == "Nikon F"
 
 
 class TestCameraIssueModel:
@@ -74,6 +79,11 @@ class TestLensModel:
         lens = Lens()
         assert lens.max_aperture is None
         assert lens.filter_diameter is None
+        assert lens.mount_type == ""
+
+    def test_mount_type(self):
+        lens = Lens(mount_type="Canon EF")
+        assert lens.mount_type == "Canon EF"
 
     def test_with_values(self):
         lens = Lens(
@@ -92,6 +102,7 @@ class TestFilmStockModel:
         assert stock.format == "35mm"
         assert stock.frames_per_roll == 36
         assert stock.quantity_on_hand == 0
+        assert stock.expiry_date is None
 
     def test_bw_stock(self):
         stock = FilmStock(
@@ -99,6 +110,11 @@ class TestFilmStockModel:
             type="black_and_white", iso=400,
         )
         assert stock.type == "black_and_white"
+
+    def test_expiry_date(self):
+        from datetime import date
+        stock = FilmStock(expiry_date=date(2027, 6, 1))
+        assert stock.expiry_date == date(2027, 6, 1)
 
 
 class TestRollModel:
@@ -145,6 +161,7 @@ class TestFrameModel:
         assert frame.frame_number == 0
         assert frame.lens_id is None
         assert frame.date_taken is None
+        assert frame.rating is None
 
     def test_with_values(self):
         frame = Frame(
@@ -154,6 +171,11 @@ class TestFrameModel:
         )
         assert frame.subject == "Portrait"
         assert frame.aperture == "f/2.8"
+
+    def test_rating_values(self):
+        assert Frame(rating=0).rating == 0
+        assert Frame(rating=5).rating == 5
+        assert Frame(rating=None).rating is None
 
 
 class TestRollDevelopmentModel:

@@ -24,7 +24,7 @@ from pjourney.cloud.provider import CloudProvider, CloudProviderError
 from pjourney.db import database as db
 from pjourney.db.models import CloudSettings, DevRecipe, DevRecipeStep, PROCESS_TYPES
 from pjourney.errors import ErrorCode, app_error
-from pjourney.export import export_frames_csv, export_rolls_csv
+from pjourney.export import export_frames_csv, export_frames_json, export_rolls_csv, export_rolls_json
 from pjourney.screens.rolls import _format_duration, _parse_duration
 from pjourney.widgets.confirm_modal import ConfirmModal
 from pjourney.widgets.inventory_table import InventoryTable
@@ -625,6 +625,7 @@ class AdminScreen(Screen):
                         yield Button("Backup Database", id="backup-btn")
                         yield Button("Vacuum Database", id="vacuum-btn")
                         yield Button("Export Data (CSV)", id="export-btn")
+                        yield Button("Export Data (JSON)", id="export-json-btn")
             with TabPane("Cloud Sync", id="tab-cloud"):
                 with Vertical(id="cloud-section"):
                     yield Static("Cloud Sync", markup=False)
@@ -1040,6 +1041,18 @@ class AdminScreen(Screen):
             frames_path = Path.home() / f"pjourney-export-frames-{today}.csv"
             export_rolls_csv(self.app.db_conn, self.app.current_user.id, rolls_path)
             export_frames_csv(self.app.db_conn, self.app.current_user.id, frames_path)
+            self._set_status(f"Exported: {rolls_path.name} and {frames_path.name}")
+        except Exception:
+            app_error(self, ErrorCode.IO_BACKUP)
+
+    @on(Button.Pressed, "#export-json-btn")
+    def do_export_json(self) -> None:
+        try:
+            today = date.today().isoformat()
+            rolls_path = Path.home() / f"pjourney-export-rolls-{today}.json"
+            frames_path = Path.home() / f"pjourney-export-frames-{today}.json"
+            export_rolls_json(self.app.db_conn, self.app.current_user.id, rolls_path)
+            export_frames_json(self.app.db_conn, self.app.current_user.id, frames_path)
             self._set_status(f"Exported: {rolls_path.name} and {frames_path.name}")
         except Exception:
             app_error(self, ErrorCode.IO_BACKUP)

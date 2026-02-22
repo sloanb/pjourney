@@ -6,7 +6,8 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Input, Label, Select, Static
+from textual.containers import VerticalScroll
+from textual.widgets import Button, Footer, Input, Label, Select, Static, TextArea
 
 from pjourney.widgets.app_header import AppHeader
 
@@ -29,8 +30,15 @@ class FrameEditModal(ModalScreen[Frame | None]):
         padding: 1 2;
         background: $surface;
     }
+    #form-scroll {
+        height: auto;
+        max-height: 80%;
+    }
     #form-box Label {
         margin: 1 0 0 0;
+    }
+    #notes {
+        height: 4;
     }
     .form-buttons {
         height: auto;
@@ -49,27 +57,36 @@ class FrameEditModal(ModalScreen[Frame | None]):
         f = self.frame
         lenses = db.get_lenses(self.app.db_conn, self.app.current_user.id)
         lens_options = [("None", 0)] + [(f"{l.name} ({l.focal_length})", l.id) for l in lenses]
+        rating_options = [
+            ("Unrated", -1), ("Reject", 0),
+            ("1 star", 1), ("2 stars", 2), ("3 stars", 3),
+            ("4 stars", 4), ("5 stars", 5),
+        ]
+        current_rating = f.rating if f.rating is not None else -1
 
         with Vertical(id="form-box"):
             yield Static(f"Frame #{f.frame_number}", markup=False)
-            yield Label("Subject")
-            yield Input(value=f.subject, id="subject")
-            yield Label("Aperture (e.g. f/2.8)")
-            yield Input(value=f.aperture, id="aperture")
-            yield Label("Shutter Speed (e.g. 1/125)")
-            yield Input(value=f.shutter_speed, id="shutter_speed")
-            yield Label("Lens")
-            yield Select(
-                lens_options,
-                value=f.lens_id or 0,
-                id="lens",
-            )
-            yield Label("Date Taken (YYYY-MM-DD)")
-            yield Input(value=str(f.date_taken or ""), id="date_taken")
-            yield Label("Location")
-            yield Input(value=f.location, id="location")
-            yield Label("Notes")
-            yield Input(value=f.notes, id="notes")
+            with VerticalScroll(id="form-scroll"):
+                yield Label("Subject")
+                yield Input(value=f.subject, id="subject")
+                yield Label("Aperture (e.g. f/2.8)")
+                yield Input(value=f.aperture, id="aperture")
+                yield Label("Shutter Speed (e.g. 1/125)")
+                yield Input(value=f.shutter_speed, id="shutter_speed")
+                yield Label("Lens")
+                yield Select(
+                    lens_options,
+                    value=f.lens_id or 0,
+                    id="lens",
+                )
+                yield Label("Date Taken (YYYY-MM-DD)")
+                yield Input(value=str(f.date_taken or ""), id="date_taken")
+                yield Label("Location")
+                yield Input(value=f.location, id="location")
+                yield Label("Rating")
+                yield Select(rating_options, value=current_rating, id="rating")
+                yield Label("Notes")
+                yield TextArea(f.notes, id="notes")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -89,7 +106,9 @@ class FrameEditModal(ModalScreen[Frame | None]):
             app_error(self, ErrorCode.VAL_DATE)
             return
         f.location = self.query_one("#location", Input).value.strip()
-        f.notes = self.query_one("#notes", Input).value.strip()
+        rating_val = self.query_one("#rating", Select).value
+        f.rating = rating_val if rating_val is not None and rating_val != -1 else None
+        f.notes = self.query_one("#notes", TextArea).text.strip()
         self.dismiss(f)
 
     @on(Button.Pressed, "#cancel-btn")
@@ -133,7 +152,7 @@ class FramesScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#frame-table", InventoryTable)
-        table.add_columns("#", "Subject", "Aperture", "Shutter", "Lens", "Date", "Location")
+        table.add_columns("#", "Subject", "Aperture", "Shutter", "Lens", "Date", "Location", "Rating")
         self._refresh()
 
     def on_screen_resume(self) -> None:
@@ -154,7 +173,10 @@ class FramesScreen(Screen):
             camera_name = camera.name if camera else "Not loaded"
 
             title = roll.title if roll.title else f"Roll #{roll.id}"
-            line2 = f"Camera: {camera_name}  Status: {roll.status}"
+            frames = db.get_frames(conn, roll_id)
+            logged_count = sum(1 for f in frames if f.subject)
+            total_count = len(frames)
+            line2 = f"Camera: {camera_name}  Status: {roll.status}  [{logged_count}/{total_count} logged]"
             if roll.push_pull_stops > 0:
                 line2 += f"  Push +{roll.push_pull_stops:g}"
             elif roll.push_pull_stops < 0:
@@ -167,16 +189,21 @@ class FramesScreen(Screen):
 
             table = self.query_one("#frame-table", InventoryTable)
             table.clear()
-            frames = db.get_frames(conn, roll_id)
             for f in frames:
                 lens_name = ""
                 if f.lens_id:
                     lens = db.get_lens(conn, f.lens_id)
                     lens_name = lens.name if lens else ""
+                if f.rating is None:
+                    rating_display = "—"
+                elif f.rating == 0:
+                    rating_display = "✗"
+                else:
+                    rating_display = "★" * f.rating
                 table.add_row(
                     str(f.frame_number), f.subject, f.aperture,
                     f.shutter_speed, lens_name,
-                    str(f.date_taken or ""), f.location,
+                    str(f.date_taken or ""), f.location, rating_display,
                     key=str(f.id),
                 )
         except Exception:

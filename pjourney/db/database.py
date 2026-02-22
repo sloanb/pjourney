@@ -1,7 +1,7 @@
 """Database connection management, schema creation, and CRUD operations."""
 
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from argon2 import PasswordHasher
@@ -245,6 +245,25 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    try:
+        conn.execute("ALTER TABLE frames ADD COLUMN rating INTEGER")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    try:
+        conn.execute("ALTER TABLE film_stocks ADD COLUMN expiry_date DATE")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    for table in ("cameras", "lenses"):
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN mount_type TEXT NOT NULL DEFAULT ''")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
 
 def _ensure_default_user(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
@@ -320,12 +339,12 @@ def save_camera(conn: sqlite3.Connection, camera: Camera) -> Camera:
         cur = conn.execute(
             """INSERT INTO cameras (user_id, name, make, model, serial_number,
                year_built, year_purchased, purchased_from, description, notes,
-               camera_type, sensor_size, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               camera_type, sensor_size, mount_type, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (camera.user_id, camera.name, camera.make, camera.model,
              camera.serial_number, camera.year_built, camera.year_purchased,
              camera.purchased_from, camera.description, camera.notes,
-             camera.camera_type, camera.sensor_size, now, now),
+             camera.camera_type, camera.sensor_size, camera.mount_type, now, now),
         )
         conn.commit()
         return get_camera(conn, cur.lastrowid)
@@ -333,11 +352,11 @@ def save_camera(conn: sqlite3.Connection, camera: Camera) -> Camera:
         conn.execute(
             """UPDATE cameras SET name=?, make=?, model=?, serial_number=?,
                year_built=?, year_purchased=?, purchased_from=?, description=?,
-               notes=?, camera_type=?, sensor_size=?, updated_at=? WHERE id=?""",
+               notes=?, camera_type=?, sensor_size=?, mount_type=?, updated_at=? WHERE id=?""",
             (camera.name, camera.make, camera.model, camera.serial_number,
              camera.year_built, camera.year_purchased, camera.purchased_from,
              camera.description, camera.notes, camera.camera_type,
-             camera.sensor_size, now, camera.id),
+             camera.sensor_size, camera.mount_type, now, camera.id),
         )
         conn.commit()
         return get_camera(conn, camera.id)
@@ -405,11 +424,11 @@ def save_lens(conn: sqlite3.Connection, lens: Lens) -> Lens:
         cur = conn.execute(
             """INSERT INTO lenses (user_id, name, make, model, focal_length,
                max_aperture, filter_diameter, year_built, year_purchased,
-               purchase_location, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               purchase_location, mount_type, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (lens.user_id, lens.name, lens.make, lens.model, lens.focal_length,
              lens.max_aperture, lens.filter_diameter, lens.year_built,
-             lens.year_purchased, lens.purchase_location, now, now),
+             lens.year_purchased, lens.purchase_location, lens.mount_type, now, now),
         )
         conn.commit()
         return get_lens(conn, cur.lastrowid)
@@ -417,10 +436,11 @@ def save_lens(conn: sqlite3.Connection, lens: Lens) -> Lens:
         conn.execute(
             """UPDATE lenses SET name=?, make=?, model=?, focal_length=?,
                max_aperture=?, filter_diameter=?, year_built=?, year_purchased=?,
-               purchase_location=?, updated_at=? WHERE id=?""",
+               purchase_location=?, mount_type=?, updated_at=? WHERE id=?""",
             (lens.name, lens.make, lens.model, lens.focal_length,
              lens.max_aperture, lens.filter_diameter, lens.year_built,
-             lens.year_purchased, lens.purchase_location, now, lens.id),
+             lens.year_purchased, lens.purchase_location, lens.mount_type,
+             now, lens.id),
         )
         conn.commit()
         return get_lens(conn, lens.id)
@@ -488,20 +508,21 @@ def save_film_stock(conn: sqlite3.Connection, stock: FilmStock) -> FilmStock:
     if stock.id is None:
         cur = conn.execute(
             """INSERT INTO film_stocks (user_id, brand, name, type, media_type, iso, format,
-               frames_per_roll, quantity_on_hand, notes, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               frames_per_roll, quantity_on_hand, notes, expiry_date, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (stock.user_id, stock.brand, stock.name, stock.type, stock.media_type,
              stock.iso, stock.format, stock.frames_per_roll, stock.quantity_on_hand,
-             stock.notes, now),
+             stock.notes, stock.expiry_date, now),
         )
         conn.commit()
         return get_film_stock(conn, cur.lastrowid)
     else:
         conn.execute(
             """UPDATE film_stocks SET brand=?, name=?, type=?, media_type=?, iso=?, format=?,
-               frames_per_roll=?, quantity_on_hand=?, notes=? WHERE id=?""",
+               frames_per_roll=?, quantity_on_hand=?, notes=?, expiry_date=? WHERE id=?""",
             (stock.brand, stock.name, stock.type, stock.media_type, stock.iso, stock.format,
-             stock.frames_per_roll, stock.quantity_on_hand, stock.notes, stock.id),
+             stock.frames_per_roll, stock.quantity_on_hand, stock.notes,
+             stock.expiry_date, stock.id),
         )
         conn.commit()
         return get_film_stock(conn, stock.id)
@@ -514,17 +535,22 @@ def delete_film_stock(conn: sqlite3.Connection, stock_id: int) -> None:
 
 # --- Roll CRUD ---
 
-def get_rolls(conn: sqlite3.Connection, user_id: int, status: str | None = None) -> list[Roll]:
+def get_rolls(conn: sqlite3.Connection, user_id: int, status: str | None = None, search: str | None = None) -> list[Roll]:
+    query = """SELECT r.* FROM rolls r
+               LEFT JOIN film_stocks fs ON r.film_stock_id = fs.id
+               LEFT JOIN cameras c ON r.camera_id = c.id
+               WHERE r.user_id = ?"""
+    params: list = [user_id]
     if status:
-        rows = conn.execute(
-            "SELECT * FROM rolls WHERE user_id = ? AND status = ? ORDER BY created_at DESC",
-            (user_id, status),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM rolls WHERE user_id = ? ORDER BY created_at DESC", (user_id,)
-        ).fetchall()
-    return [Roll(**dict(r)) for r in rows]
+        query += " AND r.status = ?"
+        params.append(status)
+    if search:
+        like = f"%{search}%"
+        query += " AND (r.title LIKE ? OR (fs.brand || ' ' || fs.name) LIKE ? OR c.name LIKE ? OR r.location LIKE ?)"
+        params.extend([like, like, like, like])
+    query += " ORDER BY r.created_at DESC"
+    rows = conn.execute(query, params).fetchall()
+    return [Roll(**{k: r[k] for k in r.keys() if k in Roll.__dataclass_fields__}) for r in rows]
 
 
 def get_roll(conn: sqlite3.Connection, roll_id: int) -> Roll | None:
@@ -662,10 +688,10 @@ def get_frame(conn: sqlite3.Connection, frame_id: int) -> Frame | None:
 def update_frame(conn: sqlite3.Connection, frame: Frame) -> Frame:
     conn.execute(
         """UPDATE frames SET subject=?, aperture=?, shutter_speed=?,
-           lens_id=?, date_taken=?, location=?, notes=? WHERE id=?""",
+           lens_id=?, date_taken=?, location=?, notes=?, rating=? WHERE id=?""",
         (frame.subject, frame.aperture, frame.shutter_speed,
          frame.lens_id, frame.date_taken, frame.location, frame.notes,
-         frame.id),
+         frame.rating, frame.id),
     )
     conn.commit()
     return get_frame(conn, frame.id)
@@ -785,6 +811,51 @@ def get_low_stock_items(conn: sqlite3.Connection, user_id: int, threshold: int =
         else:
             low_stock.append(item)
     return {"low_stock": low_stock, "out_of_stock": out_of_stock}
+
+
+def get_expiring_stock(conn: sqlite3.Connection, user_id: int, days_ahead: int = 90) -> dict[str, list[dict]]:
+    """Return analog film stocks that are expired or expiring soon."""
+    today = date.today().isoformat()
+    future_str = (date.today() + timedelta(days=days_ahead)).isoformat()
+    rows = conn.execute(
+        """SELECT brand, name, expiry_date
+           FROM film_stocks
+           WHERE user_id = ? AND media_type = 'analog'
+             AND quantity_on_hand > 0 AND expiry_date IS NOT NULL
+           ORDER BY expiry_date, brand, name""",
+        (user_id,),
+    ).fetchall()
+    expired = []
+    expiring_soon = []
+    for r in rows:
+        item = {"brand": r["brand"], "name": r["name"], "expiry_date": r["expiry_date"]}
+        if str(r["expiry_date"]) < today:
+            expired.append(item)
+        elif str(r["expiry_date"]) <= future_str:
+            expiring_soon.append(item)
+    return {"expired": expired, "expiring_soon": expiring_soon}
+
+
+# --- Roll Frame Counts ---
+
+def get_roll_frame_counts(conn: sqlite3.Connection, roll_ids: list[int]) -> dict[int, tuple[int, int]]:
+    """Return {roll_id: (logged_count, total_count)} for given roll IDs."""
+    if not roll_ids:
+        return {}
+    placeholders = ",".join("?" * len(roll_ids))
+    rows = conn.execute(
+        f"""SELECT roll_id,
+               COUNT(*) as total,
+               COUNT(CASE WHEN subject != '' THEN 1 END) as logged
+           FROM frames
+           WHERE roll_id IN ({placeholders})
+           GROUP BY roll_id""",
+        roll_ids,
+    ).fetchall()
+    result = {rid: (0, 0) for rid in roll_ids}
+    for r in rows:
+        result[r["roll_id"]] = (r["logged"], r["total"])
+    return result
 
 
 # --- Statistics ---

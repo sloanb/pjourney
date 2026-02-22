@@ -1,5 +1,7 @@
 """Film stock types list and management screen."""
 
+from datetime import date
+
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -116,6 +118,8 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
                             )
                             yield Label("Frames Per Roll")
                             yield Input(value=str(s.frames_per_roll), id="frames_per_roll")
+                            yield Label("Expiry Date (YYYY-MM-DD)")
+                            yield Input(value=str(s.expiry_date or ""), id="expiry_date")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -155,6 +159,15 @@ class FilmStockFormModal(ModalScreen[FilmStock | None]):
                 app_error(self, ErrorCode.VAL_NUMBER, detail="ISO, Frames, and Quantity must be whole numbers.")
                 return
             s.format = self.query_one("#format", Select).value
+            expiry_str = self.query_one("#expiry_date", Input).value.strip()
+            if expiry_str:
+                try:
+                    s.expiry_date = date.fromisoformat(expiry_str)
+                except ValueError:
+                    app_error(self, ErrorCode.VAL_DATE)
+                    return
+            else:
+                s.expiry_date = None
         s.notes = self.query_one("#notes", Input).value.strip()
         s.user_id = self.app.current_user.id
         self.dismiss(s)
@@ -198,7 +211,7 @@ class FilmStockScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#stock-table", InventoryTable)
-        table.add_columns("ID", "Brand", "Name", "Media", "Type", "ISO", "Format", "Frames", "Qty")
+        table.add_columns("ID", "Brand", "Name", "Media", "Type", "ISO", "Format", "Frames", "Qty", "Expires")
         self._refresh()
 
     def on_screen_resume(self) -> None:
@@ -224,9 +237,11 @@ class FilmStockScreen(Screen):
                     format_display = s.format
                     frames_display = str(s.frames_per_roll)
                     qty_display = str(s.quantity_on_hand)
+                expiry_display = str(s.expiry_date) if s.expiry_date else "—"
                 table.add_row(
                     str(s.id), s.brand, s.name, media_display, type_display,
                     iso_display, format_display, frames_display, qty_display,
+                    expiry_display,
                     key=str(s.id),
                 )
         except Exception:

@@ -27,6 +27,7 @@ class Camera:
     notes: str = ""
     camera_type: str = "film"          # "film" or "digital"
     sensor_size: str | None = None     # Only for digital cameras
+    mount_type: str = ""
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -55,6 +56,7 @@ class Lens:
     year_built: int | None = None
     year_purchased: int | None = None
     purchase_location: str | None = None
+    mount_type: str = ""
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -81,6 +83,7 @@ class FilmStock:
     frames_per_roll: int = 36
     quantity_on_hand: int = 0
     notes: str = ""
+    expiry_date: date | None = None
     created_at: datetime | None = None
 
 
@@ -120,6 +123,7 @@ class Frame:
     date_taken: date | None = None
     location: str = ""
     notes: str = ""
+    rating: int | None = None
 
 
 DEVELOPMENT_TYPES = ["self", "lab"]

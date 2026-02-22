@@ -104,6 +104,8 @@ class CameraFormModal(ModalScreen[Camera | None]):
                     yield Input(value=c.description, id="description")
                     yield Label("Notes")
                     yield Input(value=c.notes, id="notes")
+                    yield Label("Mount Type")
+                    yield Input(value=c.mount_type, id="mount_type")
                     yield Label("Camera Type")
                     yield Select(CAMERA_TYPES, value=c.camera_type or "film", id="camera_type")
                     with Vertical(id="sensor-size-container"):
@@ -137,6 +139,7 @@ class CameraFormModal(ModalScreen[Camera | None]):
         c.purchased_from = self.query_one("#purchased_from", Input).value.strip() or None
         c.description = self.query_one("#description", Input).value.strip()
         c.notes = self.query_one("#notes", Input).value.strip()
+        c.mount_type = self.query_one("#mount_type", Input).value.strip()
         c.camera_type = self.query_one("#camera_type", Select).value or "film"
         sensor_val = self.query_one("#sensor_size", Select).value
         c.sensor_size = sensor_val if sensor_val is not Select.NULL else None
@@ -247,7 +250,7 @@ class CamerasScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#camera-table", InventoryTable)
-        table.add_columns("ID", "Name", "Make", "Model", "Serial #", "Year", "Type", "Sensor")
+        table.add_columns("ID", "Name", "Make", "Model", "Serial #", "Year", "Type", "Sensor", "Mount")
         self._refresh()
 
     def on_screen_resume(self) -> None:
@@ -268,7 +271,7 @@ class CamerasScreen(Screen):
                 table.add_row(
                     str(c.id), c.name, c.make, c.model,
                     c.serial_number, str(c.year_built or ""),
-                    type_label, sensor_label,
+                    type_label, sensor_label, c.mount_type,
                     key=str(c.id),
                 )
         except Exception:

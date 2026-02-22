@@ -82,6 +82,8 @@ class LensFormModal(ModalScreen[Lens | None]):
                         yield Input(value=str(ln.year_purchased or ""), id="year_purchased")
                         yield Label("Purchase Location")
                         yield Input(value=ln.purchase_location or "", id="purchase_location")
+                        yield Label("Mount Type")
+                        yield Input(value=ln.mount_type, id="mount_type")
             with Horizontal(classes="form-buttons"):
                 yield Button("Save", id="save-btn", variant="primary")
                 yield Button("Cancel", id="cancel-btn")
@@ -106,6 +108,7 @@ class LensFormModal(ModalScreen[Lens | None]):
         yp = self.query_one("#year_purchased", Input).value.strip()
         ln.year_purchased = int(yp) if yp else None
         ln.purchase_location = self.query_one("#purchase_location", Input).value.strip() or None
+        ln.mount_type = self.query_one("#mount_type", Input).value.strip()
         if not ln.name:
             return
         ln.user_id = self.app.current_user.id
@@ -207,7 +210,7 @@ class LensesScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#lens-table", InventoryTable)
-        table.add_columns("ID", "Name", "Make", "Focal Length", "Aperture", "Filter")
+        table.add_columns("ID", "Name", "Make", "Focal Length", "Aperture", "Filter", "Mount")
         self._refresh()
 
     def on_screen_resume(self) -> None:
@@ -223,6 +226,7 @@ class LensesScreen(Screen):
                     str(ln.id), ln.name, ln.make, ln.focal_length,
                     f"f/{ln.max_aperture}" if ln.max_aperture else "",
                     f"{ln.filter_diameter}mm" if ln.filter_diameter else "",
+                    ln.mount_type,
                     key=str(ln.id),
                 )
         except Exception:

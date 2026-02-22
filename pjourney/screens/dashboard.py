@@ -92,6 +92,22 @@ class DashboardScreen(Screen):
         padding: 0 2;
         color: $error;
     }
+    #expiry-section {
+        height: auto;
+        padding: 1 2;
+    }
+    .expiry-header {
+        color: $warning;
+        text-style: bold;
+    }
+    .expired-item {
+        padding: 0 2;
+        color: $error;
+    }
+    .expiring-soon-item {
+        padding: 0 2;
+        color: $warning;
+    }
     #nav-row {
         height: auto;
         padding: 1 2;
@@ -133,6 +149,9 @@ class DashboardScreen(Screen):
         with Vertical(id="low-stock-section"):
             yield Static("Film Stock Alerts", classes="low-stock-header", markup=False)
             yield Vertical(id="low-stock-list")
+        with Vertical(id="expiry-section"):
+            yield Static("Film Expiry Alerts", classes="expiry-header", markup=False)
+            yield Vertical(id="expiry-list")
         with Horizontal(id="nav-row"):
             yield Button("Cameras [c]", id="btn-cameras")
             yield Button("Lenses [l]", id="btn-lenses")
@@ -198,6 +217,29 @@ class DashboardScreen(Screen):
                         Static(
                             f"  Low Stock: {item['brand']} {item['name']} ({item['quantity']} remaining)",
                             classes="low-stock-item",
+                            markup=False,
+                        )
+                    )
+            expiry_alerts = db.get_expiring_stock(conn, user_id)
+            expiry_section = self.query_one("#expiry-section", Vertical)
+            expiry_list = self.query_one("#expiry-list", Vertical)
+            expiry_list.remove_children()
+            has_expiry = bool(expiry_alerts["expired"] or expiry_alerts["expiring_soon"])
+            expiry_section.display = has_expiry
+            if has_expiry:
+                for item in expiry_alerts["expired"]:
+                    expiry_list.mount(
+                        Static(
+                            f"  EXPIRED: {item['brand']} {item['name']} (expired {item['expiry_date']})",
+                            classes="expired-item",
+                            markup=False,
+                        )
+                    )
+                for item in expiry_alerts["expiring_soon"]:
+                    expiry_list.mount(
+                        Static(
+                            f"  Expiring soon: {item['brand']} {item['name']} (expires {item['expiry_date']})",
+                            classes="expiring-soon-item",
                             markup=False,
                         )
                     )

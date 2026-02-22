@@ -723,13 +723,19 @@ class RollsScreen(Screen):
         ("f", "view_frames", "Frames"),
         ("i", "view_dev_info", "Dev Info"),
         ("c", "scan_roll", "Scan"),
+        ("u", "duplicate", "Duplicate"),
         ("d", "delete", "Delete"),
+        ("slash", "focus_search", "Search"),
         ("escape", "go_back", "Back"),
     ]
 
     CSS = """
     RollsScreen {
         layout: vertical;
+    }
+    #search-input {
+        height: auto;
+        margin: 0 2;
     }
     #filter-row {
         height: auto;
@@ -751,9 +757,11 @@ class RollsScreen(Screen):
     def __init__(self):
         super().__init__()
         self._filter_status: str | None = None
+        self._search_text: str = ""
 
     def compose(self) -> ComposeResult:
         yield AppHeader()
+        yield Input(placeholder="Search rolls...", id="search-input")
         with Horizontal(id="filter-row"):
             yield Button("All", id="filter-all", variant="primary")
             for status in ROLL_STATUSES:
@@ -766,17 +774,27 @@ class RollsScreen(Screen):
             yield Button("Frames [f]", id="frames-btn")
             yield Button("Dev Info [i]", id="dev-info-btn")
             yield Button("Scan [c]", id="scan-btn")
+            yield Button("Duplicate [u]", id="dup-btn")
             yield Button("Delete [d]", id="del-btn", variant="error")
             yield Button("Back [Esc]", id="back-btn")
         yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one("#roll-table", InventoryTable)
-        table.add_columns("Title", "Film Stock", "Camera", "Status", "Location", "Push/Pull", "Loaded", "Notes")
+        table.add_columns("Title", "Film Stock", "Camera", "Status", "Location", "Push/Pull", "Loaded", "Logged", "Notes")
         self._refresh()
+        table.focus()
 
     def on_screen_resume(self) -> None:
         self._refresh()
+
+    @on(Input.Changed, "#search-input")
+    def on_search_changed(self, event: Input.Changed) -> None:
+        self._search_text = event.value.strip()
+        self._refresh()
+
+    def action_focus_search(self) -> None:
+        self.query_one("#search-input", Input).focus()
 
     def _refresh(self) -> None:
         try:
@@ -784,7 +802,9 @@ class RollsScreen(Screen):
             table.clear()
             conn = self.app.db_conn
             user_id = self.app.current_user.id
-            rolls = db.get_rolls(conn, user_id, self._filter_status)
+            rolls = db.get_rolls(conn, user_id, self._filter_status, search=self._search_text or None)
+            roll_ids = [r.id for r in rolls]
+            frame_counts = db.get_roll_frame_counts(conn, roll_ids) if roll_ids else {}
             for r in rolls:
                 stock = db.get_film_stock(conn, r.film_stock_id)
                 stock_name = f"{stock.brand} {stock.name}" if stock else "?"
@@ -800,9 +820,12 @@ class RollsScreen(Screen):
                 status_display = r.status
                 if r.status == "developed" and r.scan_date:
                     status_display = "developed [S]"
+                logged, total = frame_counts.get(r.id, (0, 0))
+                logged_display = f"{logged}/{total}" if total > 0 else "—"
                 table.add_row(
                     title, stock_name, camera_name, status_display,
-                    r.location, pp, str(r.loaded_date or ""), r.notes,
+                    r.location, pp, str(r.loaded_date or ""), logged_display,
+                    r.notes,
                     key=str(r.id),
                 )
         except Exception:
@@ -1030,6 +1053,47 @@ class RollsScreen(Screen):
         self.app.push_screen(
             ScanRollModal(current_scan_date=current_date, current_scan_notes=current_notes),
             on_result,
+        )
+
+    @on(Button.Pressed, "#dup-btn")
+    def action_duplicate(self) -> None:
+        roll_id = self._get_selected_id()
+        if roll_id is None:
+            return
+        roll = db.get_roll(self.app.db_conn, roll_id)
+        if not roll:
+            return
+        stock = db.get_film_stock(self.app.db_conn, roll.film_stock_id)
+        stock_name = f"{stock.brand} {stock.name}" if stock else "?"
+        title = roll.title if roll.title else f"Roll #{roll.id}"
+
+        def on_confirmed(confirmed: bool) -> None:
+            if not confirmed:
+                return
+            try:
+                new_roll = Roll(
+                    user_id=roll.user_id,
+                    film_stock_id=roll.film_stock_id,
+                    camera_id=roll.camera_id,
+                    lens_id=roll.lens_id,
+                    title=(roll.title + " (copy)") if roll.title else "",
+                    push_pull_stops=roll.push_pull_stops,
+                    location=roll.location,
+                    notes=roll.notes,
+                )
+                frames_per_roll = stock.frames_per_roll if stock else 0
+                db.create_roll(self.app.db_conn, new_roll, frames_per_roll)
+                self._refresh()
+            except Exception:
+                app_error(self, ErrorCode.DB_SAVE)
+
+        self.app.push_screen(
+            ConfirmModal(
+                f"Duplicate '{title}' ({stock_name})?",
+                confirm_label="Duplicate",
+                confirm_variant="primary",
+            ),
+            on_confirmed,
         )
 
     @on(Button.Pressed, "#del-btn")
