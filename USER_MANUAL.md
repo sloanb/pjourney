@@ -41,6 +41,7 @@ At a glance the Dashboard shows you:
 - **Most-used gear** — the camera, lens, and film stock you have reached for most often
 - **Currently loaded cameras** — any cameras with film actively loaded or being shot
 - **Film stock alerts** — analog stocks that are low (2 or fewer rolls remaining) or completely out of stock, highlighted in the Film Stock Alerts section (hidden when all stocks are well-stocked)
+- **Film expiry alerts** — analog stocks that have already expired or are expiring within 90 days, highlighted in the Film Expiry Alerts section (hidden when no stock is near or past its expiry date)
 
 ### Navigating from the Dashboard
 
@@ -79,6 +80,7 @@ Press `a` to open the Add Camera form. Fill in as much or as little as you know:
 | Year Built | Year the camera was manufactured |
 | Year Purchased | Year you acquired it |
 | Purchased From | Shop, auction, friend, etc. |
+| Mount Type | Lens mount standard (e.g. M, F, EF, K) — optional |
 | Camera Type | **Film** or **Digital** |
 | Sensor Size | For digital cameras: Full Frame, APS-C, Micro Four Thirds, etc. |
 | Description | Free-form notes about this body |
@@ -148,6 +150,7 @@ Press `a` to open the Add Lens form:
 | Year Built | Year manufactured |
 | Year Purchased | Year you acquired it |
 | Purchase Location | Where you bought it |
+| Mount Type | Lens mount standard (e.g. M, F, EF, K) — optional |
 
 **Lens actions**
 
@@ -193,6 +196,7 @@ A film stock entry represents a type of film you own or have used — not a spec
 | Format | 35mm, 120, 4x5, or 8x10 |
 | Frames Per Roll | Typically 36 for 35mm, 12 for 120 |
 | Quantity On Hand | How many rolls of this stock you currently have |
+| Expiry Date | Expiry date printed on the box (YYYY-MM-DD) — optional; used for dashboard expiry alerts |
 | Notes | Anything useful — development times, push/pull notes |
 
 **Film stock actions**
@@ -220,6 +224,10 @@ Select the film stock from the dropdown. Optionally give the roll a **Title** (e
 
 pjourney automatically creates frame entries based on the number of frames defined in your film stock. A fresh roll starts with the status **Fresh**.
 
+To duplicate an existing roll (same film stock, location, and notes, status reset to Fresh), select it and press `u`. This is useful when you repeatedly shoot the same setup.
+
+The Rolls screen also has a **search bar** at the top (press `/` to focus it) that filters rolls in real time by title, film stock, camera name, or location.
+
 ---
 
 ### Step 2 — Load the Camera
@@ -240,7 +248,7 @@ When you start making exposures, select the roll and press `s` (advance Status).
 
 ### Step 4 — Log Your Frames
 
-Select the roll and press `f` to open the Frames screen. You will see one row per frame in the roll.
+Select the roll and press `f` to open the Frames screen. You will see one row per frame in the roll. The **Logged** column in the Rolls table (e.g. `12/36`) shows how many frames have a subject entered out of the total, so you can see your logging progress at a glance without opening the Frames screen.
 
 Select a frame and press `e` to edit it:
 
@@ -252,7 +260,8 @@ Select a frame and press `e` to edit it:
 | Lens | Defaults to the roll lens; can override per frame |
 | Date Taken | YYYY-MM-DD |
 | Location | Where you were shooting |
-| Notes | Anything else worth remembering |
+| Rating | Unrated, Reject (✗), or 1–5 stars; displayed in the frame table |
+| Notes | Multi-line notes — anything else worth remembering |
 
 You can fill this in as you shoot or at the end of the day — whatever fits your workflow.
 
@@ -334,9 +343,18 @@ Press **Vacuum Database** to optimise your database file. This reclaims space af
 Press **Export Data (CSV)** to save two CSV files to your home directory:
 
 - `pjourney-export-rolls-YYYY-MM-DD.csv` — all rolls with their film stock, camera, lens, status, location, push/pull, and dates
-- `pjourney-export-frames-YYYY-MM-DD.csv` — all frame records with subject, aperture, shutter speed, lens, date, and location
+- `pjourney-export-frames-YYYY-MM-DD.csv` — all frame records with subject, aperture, shutter speed, lens, date, location, rating, and notes
 
 These files can be opened in any spreadsheet application for analysis or archiving.
+
+### Export Data (JSON)
+
+Press **Export Data (JSON)** to save the same data as JSON files to your home directory:
+
+- `pjourney-export-rolls-YYYY-MM-DD.json` — all rolls as a JSON array
+- `pjourney-export-frames-YYYY-MM-DD.json` — all frame records as a JSON array
+
+JSON export is useful for importing data into other tools or writing custom scripts.
 
 ### Development Recipes
 
@@ -439,6 +457,8 @@ Press **Disconnect** to revoke pjourney's Dropbox access and remove stored crede
 | `f` | View frames for this roll |
 | `i` | View development info |
 | `c` | Record scan / digitization info |
+| `u` | Duplicate roll (copies film stock, location, notes; resets to Fresh) |
+| `/` | Focus search bar (filter by title, stock, camera, or location) |
 | `d` | Delete roll |
 
 ### Camera Issues

@@ -43,22 +43,22 @@ pjourney/
   errors.py               — ErrorCode enum and app_error() toast helper
   db/
     database.py           — Schema, migrations, all CRUD functions
-    models.py             — Dataclasses (Camera, Lens, FilmStock, Roll, Frame, CloudSettings, DevRecipe, DevRecipeStep, …)
+    models.py             — Dataclasses (Camera, Lens, FilmStock, Roll, Frame, CloudSettings, DevRecipe, DevRecipeStep, …); Camera and Lens have mount_type; FilmStock has expiry_date; Frame has rating
   screens/
     login.py              — Login / account creation
-    dashboard.py          — Home screen with inventory stats, loaded cameras, and low-stock film alerts
+    dashboard.py          — Home screen with inventory stats, loaded cameras, low-stock film alerts, and film expiry alerts
     cameras.py            — Camera list, edit form, issue/maintenance log
     lenses.py             — Lens list, edit form, per-lens notes
     film_stock.py         — Film stock catalogue
-    rolls.py              — Roll lifecycle management, frame access; rolls have title, location, and push/pull tracking
+    rolls.py              — Roll lifecycle management, frame access; search bar, duplication (u), logged/total frame counter; rolls have title, location, and push/pull tracking
     frames.py             — Per-frame shooting details
     stats.py              — StatsScreen: roll overview, film usage, top shooting locations, equipment usage, activity
-    admin.py              — Tabbed admin screen (Database, Cloud Sync, Recipes, Users tabs) with DB backup/vacuum/CSV export, Dropbox cloud sync, development recipe management, and user management
+    admin.py              — Tabbed admin screen (Database, Cloud Sync, Recipes, Users tabs) with DB backup/vacuum/CSV and JSON export, Dropbox cloud sync, development recipe management, and user management
   widgets/
     inventory_table.py    — Shared DataTable with vim-style navigation
     app_header.py         — Common screen header
     confirm_modal.py      — Reusable delete confirmation modal
-  export.py               — export_rolls_csv() and export_frames_csv() functions
+  export.py               — export_rolls_csv(), export_frames_csv(), export_rolls_json(), export_frames_json()
   cloud/
     provider.py           — CloudProvider ABC, CloudProviderError, shared dataclasses
     credentials.py        — CredentialStore (OS keyring wrapper)
@@ -66,13 +66,13 @@ pjourney/
 docs/
   ERROR_CODES.md          — User-facing error code reference
 tests/
-  test_database.py        — CRUD and schema tests (120 tests)
-  test_models.py          — Dataclass default/value tests (33 tests)
-  test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests (16 tests)
+  test_database.py        — CRUD and schema tests (159 tests)
+  test_models.py          — Dataclass default/value tests (37 tests)
+  test_confirm_modal.py   — ConfirmModal and delete-confirmation integration tests (18 tests)
   test_camera_form_modal.py — CameraFormModal rendering and save/cancel tests (9 tests)
   test_errors.py          — ErrorCode enum and app_error() helper tests (14 tests)
-  test_dev_modals.py      — Development flow modal tests (28 tests)
-  test_dashboard.py       — DashboardScreen low-stock alert rendering tests (2 tests)
+  test_dev_modals.py      — Development flow modal tests (31 tests)
+  test_dashboard.py       — DashboardScreen low-stock and expiry alert rendering tests (2 tests)
   test_cloud_settings.py  — cloud_settings DB CRUD tests (6 tests)
   test_cloud_provider.py  — CloudProvider ABC and CredentialStore tests (11 tests)
   test_dropbox_provider.py — DropboxProvider tests with mocked SDK (25 tests)
@@ -81,10 +81,11 @@ tests/
   test_film_stock_modal.py — FilmStockFormModal rendering and save/cancel tests (16 tests)
   test_stats_screen.py    — StatsScreen tests (11 tests)
   test_recipe_modals.py   — RecipeFormModal and RecipePickerModal tests (15 tests)
-  test_export.py          — CSV export function tests (10 tests)
+  test_export.py          — CSV and JSON export function tests (18 tests)
+  test_lens_form_modal.py — LensFormModal rendering and save/cancel tests (9 tests)
 ```
 
-**345 total tests**
+**410 total tests**
 
 ## Roll Lifecycle
 
